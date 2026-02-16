@@ -2,9 +2,14 @@
 
 AI-powered agent to migrate AWS Redshift Provisioned clusters to Serverless with zero downtime.
 
+[![GitHub release](https://img.shields.io/github/v/release/milindoke/redshift-migration-agent)](https://github.com/milindoke/redshift-migration-agent/releases)
 [![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-orange?logo=amazon-aws)](https://github.com/milindoke/redshift-migration-agent)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
+[![GitHub stars](https://img.shields.io/github/stars/milindoke/redshift-migration-agent?style=social)](https://github.com/milindoke/redshift-migration-agent/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/milindoke/redshift-migration-agent?style=social)](https://github.com/milindoke/redshift-migration-agent/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/milindoke/redshift-migration-agent)](https://github.com/milindoke/redshift-migration-agent/issues)
 
 ## 🎯 What It Does
 
