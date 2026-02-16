@@ -71,6 +71,231 @@ def run_aws_command(service: str, operation: str, parameters: dict = None, regio
 
 
 @tool
+def get_cluster_usage_limits(cluster_id: str, region: str = None) -> str:
+    """Get usage limits from a Redshift provisioned cluster.
+    
+    Usage limits control resource consumption for features like:
+    - Spectrum: Limit data scanned by Redshift Spectrum queries
+    - Concurrency Scaling: Limit time using concurrency scaling clusters
+    - Cross-Region Datasharing: Limit data transferred for datasharing
+    
+    Args:
+        cluster_id: The provisioned cluster ID
+        region: AWS region (optional, uses default if not specified)
+    
+    Returns:
+        JSON with all usage limits configured for the cluster
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        redshift = boto3.client("redshift", region_name=region)
+        
+        usage_limits = []
+        
+        # List usage limits for this cluster
+        paginator = redshift.get_paginator("describe_usage_limits")
+        for page in paginator.paginate(ClusterIdentifier=cluster_id):
+            for limit in page.get("UsageLimits", []):
+                usage_limits.append({
+                    "limit_id": limit.get("UsageLimitId"),
+                    "feature_type": limit.get("FeatureType"),
+                    "limit_type": limit.get("LimitType"),
+                    "amount": limit.get("Amount"),
+                    "period": limit.get("Period"),
+                    "breach_action": limit.get("BreachAction"),
+                    "tags": {tag["Key"]: tag["Value"] for tag in limit.get("Tags", [])}
+                })
+        
+        if not usage_limits:
+            return json.dumps({
+                "cluster_id": cluster_id,
+                "usage_limits_count": 0,
+                "message": "No usage limits configured for this cluster"
+            }, indent=2)
+        
+        return json.dumps({
+            "cluster_id": cluster_id,
+            "usage_limits_count": len(usage_limits),
+            "usage_limits": usage_limits
+        }, indent=2)
+        
+    except ClientError as e:
+        return f"AWS API Error: {e.response['Error']['Code']} - {e.response['Error']['Message']}"
+    except Exception as e:
+        return f"Error getting usage limits: {str(e)}"
+
+
+@tool
+def create_serverless_usage_limit(
+    workgroup_name: str,
+    usage_type: str,
+    amount: int,
+    period: str = "monthly",
+    breach_action: str = "log",
+    region: str = None
+) -> str:
+    """Create a usage limit for a Redshift Serverless workgroup.
+    
+    Serverless usage limits control RPU (Redshift Processing Unit) consumption.
+    
+    Args:
+        workgroup_name: The serverless workgroup name
+        usage_type: Type of usage limit - must be "serverless-compute" for serverless
+        amount: Limit amount in RPU-hours (e.g., 60 for 60 RPU-hours)
+        period: Time period - "daily", "weekly", or "monthly" (default: monthly)
+        breach_action: Action when limit is breached - "log", "emit-metric", or "deactivate" (default: log)
+        region: AWS region (optional, uses default if not specified)
+    
+    Returns:
+        Created usage limit details
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        redshift_serverless = boto3.client("redshift-serverless", region_name=region)
+        
+        # Create usage limit for serverless workgroup
+        response = redshift_serverless.create_usage_limit(
+            resourceArn=f"arn:aws:redshift-serverless:{region or 'us-east-1'}:*:workgroup/*",
+            usageType=usage_type,
+            amount=amount,
+            period=period,
+            breachAction=breach_action
+        )
+        
+        result = {
+            "status": "success",
+            "workgroup_name": workgroup_name,
+            "usage_limit_id": response.get("usageLimit", {}).get("usageLimitId"),
+            "usage_type": usage_type,
+            "amount": amount,
+            "period": period,
+            "breach_action": breach_action,
+            "message": f"Usage limit created for workgroup '{workgroup_name}'"
+        }
+        
+        return json.dumps(result, indent=2)
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_msg = e.response['Error']['Message']
+        
+        if error_code == "ConflictException":
+            return json.dumps({
+                "status": "already_exists",
+                "message": f"Usage limit already exists for workgroup '{workgroup_name}'"
+            }, indent=2)
+        
+        return f"AWS API Error: {error_code} - {error_msg}"
+    except Exception as e:
+        return f"Error creating usage limit: {str(e)}"
+
+
+@tool
+def migrate_usage_limits_to_serverless(
+    cluster_id: str,
+    workgroup_name: str,
+    region: str = None,
+    dry_run: bool = False
+) -> str:
+    """Migrate usage limits from provisioned cluster to serverless workgroup.
+    
+    Note: Provisioned and Serverless use different usage limit types:
+    - Provisioned: spectrum, concurrency-scaling, cross-region-datasharing
+    - Serverless: serverless-compute (RPU-hours)
+    
+    This tool provides recommendations for equivalent serverless limits based on
+    provisioned cluster usage patterns.
+    
+    Args:
+        cluster_id: Source provisioned cluster ID
+        workgroup_name: Target serverless workgroup name
+        region: AWS region (optional, uses default if not specified)
+        dry_run: Preview recommendations without creating limits (default: False)
+    
+    Returns:
+        Migration results with recommendations
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        redshift = boto3.client("redshift", region_name=region)
+        
+        results = {
+            "cluster_id": cluster_id,
+            "workgroup_name": workgroup_name,
+            "dry_run": dry_run,
+            "provisioned_limits": [],
+            "serverless_recommendations": [],
+            "notes": []
+        }
+        
+        # Get usage limits from provisioned cluster
+        paginator = redshift.get_paginator("describe_usage_limits")
+        for page in paginator.paginate(ClusterIdentifier=cluster_id):
+            for limit in page.get("UsageLimits", []):
+                results["provisioned_limits"].append({
+                    "feature_type": limit.get("FeatureType"),
+                    "limit_type": limit.get("LimitType"),
+                    "amount": limit.get("Amount"),
+                    "period": limit.get("Period"),
+                    "breach_action": limit.get("BreachAction")
+                })
+        
+        if not results["provisioned_limits"]:
+            results["notes"].append("No usage limits found on provisioned cluster")
+            results["notes"].append("Consider setting RPU-hour limits for serverless workgroup")
+            results["serverless_recommendations"].append({
+                "usage_type": "serverless-compute",
+                "amount": 60,
+                "period": "daily",
+                "breach_action": "log",
+                "reason": "Default recommendation: 60 RPU-hours per day"
+            })
+        else:
+            # Provide recommendations based on provisioned limits
+            results["notes"].append("Provisioned usage limits don't directly map to serverless")
+            results["notes"].append("Serverless uses RPU-hours for compute limits")
+            
+            # Check for concurrency scaling limits (most relevant to serverless)
+            has_concurrency_limit = any(
+                l["feature_type"] == "concurrency-scaling" 
+                for l in results["provisioned_limits"]
+            )
+            
+            if has_concurrency_limit:
+                results["serverless_recommendations"].append({
+                    "usage_type": "serverless-compute",
+                    "amount": 120,
+                    "period": "daily",
+                    "breach_action": "log",
+                    "reason": "Cluster has concurrency scaling limits - recommended 120 RPU-hours/day"
+                })
+            else:
+                results["serverless_recommendations"].append({
+                    "usage_type": "serverless-compute",
+                    "amount": 60,
+                    "period": "daily",
+                    "breach_action": "log",
+                    "reason": "Standard recommendation: 60 RPU-hours per day"
+                })
+        
+        results["total_provisioned_limits"] = len(results["provisioned_limits"])
+        results["total_recommendations"] = len(results["serverless_recommendations"])
+        
+        return json.dumps(results, indent=2)
+        
+    except ClientError as e:
+        return f"AWS API Error: {e.response['Error']['Code']} - {e.response['Error']['Message']}"
+    except Exception as e:
+        return f"Error migrating usage limits: {str(e)}"
+
+
+@tool
 def get_cluster_maintenance_settings(cluster_id: str, region: str = None) -> str:
     """Get maintenance track and window settings from a Redshift provisioned cluster.
     
@@ -677,7 +902,48 @@ def get_migration_help(topic: str = None) -> str:
     Returns:
         Help text for the specified topic
     """
-    if topic == "maintenance_snapshot":
+    if topic == "usage_limits":
+        return """
+Usage Limits Migration:
+Migrate usage limits from provisioned cluster to serverless workgroup.
+
+Available Tools:
+1. get_cluster_usage_limits - Get usage limits from provisioned cluster
+2. create_serverless_usage_limit - Create usage limit for serverless workgroup
+3. migrate_usage_limits_to_serverless - Get recommendations and migrate
+
+Key Differences:
+- Provisioned: spectrum, concurrency-scaling, cross-region-datasharing
+- Serverless: serverless-compute (RPU-hours)
+
+Usage Limit Types:
+Provisioned:
+- spectrum: Limit data scanned by Spectrum queries (in TB)
+- concurrency-scaling: Limit time using concurrency scaling (in minutes)
+- cross-region-datasharing: Limit data transferred for datasharing (in TB)
+
+Serverless:
+- serverless-compute: Limit RPU-hours consumed by workgroup
+
+Periods: daily, weekly, monthly
+Breach Actions: log, emit-metric, deactivate (serverless) / disable (provisioned)
+
+Example workflow:
+1. Check limits: get_cluster_usage_limits(cluster_id="my-cluster")
+2. Get recommendations: migrate_usage_limits_to_serverless(
+                          cluster_id="my-cluster",
+                          workgroup_name="my-wg",
+                          dry_run=True)
+3. Create limit: create_serverless_usage_limit(
+                   workgroup_name="my-wg",
+                   usage_type="serverless-compute",
+                   amount=60,
+                   period="daily",
+                   breach_action="log")
+
+Note: Limits don't directly map - recommendations provided based on usage patterns.
+"""
+    elif topic == "maintenance_snapshot":
         return """
 Maintenance Track and Snapshot Copy Migration:
 Migrate maintenance and snapshot settings from provisioned to serverless.
@@ -751,6 +1017,7 @@ Extracts:
 - Snapshot schedules
 - Maintenance track and window
 - Cross-region snapshot copy settings
+- Usage limits (spectrum, concurrency-scaling, datasharing)
 - Tags and logging configuration
 """
     elif topic == "apply":
@@ -800,6 +1067,9 @@ Commands:
 6. get_cluster_maintenance_settings - Get maintenance track and window
 7. get_cluster_snapshot_copy_settings - Get cross-region snapshot copy config
 8. configure_serverless_snapshot_copy - Configure snapshot copy for serverless
+9. get_cluster_usage_limits - Get usage limits from provisioned cluster
+10. create_serverless_usage_limit - Create usage limit for serverless workgroup
+11. migrate_usage_limits_to_serverless - Migrate usage limits with recommendations
 
 Key Concepts:
 - Namespace: Contains database, users, and data
@@ -809,8 +1079,9 @@ Key Concepts:
 - Scheduled Queries: Migrates EventBridge rules to target serverless workgroup
 - Maintenance: Serverless uses automatic maintenance (no manual windows)
 - Snapshot Copy: Can be configured for cross-region backup
+- Usage Limits: Control resource consumption (different types for provisioned vs serverless)
 
-Use get_migration_help with topic='extract', 'apply', 'migrate', 'scheduled_queries', or 'maintenance_snapshot' for detailed help.
+Use get_migration_help with topic='extract', 'apply', 'migrate', 'scheduled_queries', 'maintenance_snapshot', or 'usage_limits' for detailed help.
 """
 
 
@@ -835,6 +1106,9 @@ Available Tools:
 - get_cluster_maintenance_settings: Get maintenance track and window from provisioned cluster
 - get_cluster_snapshot_copy_settings: Get cross-region snapshot copy settings
 - configure_serverless_snapshot_copy: Configure cross-region snapshot copy for serverless namespace
+- get_cluster_usage_limits: Get usage limits from provisioned cluster
+- create_serverless_usage_limit: Create usage limit for serverless workgroup
+- migrate_usage_limits_to_serverless: Migrate usage limits with recommendations
 - get_migration_help: Context-aware help system
 
 When users ask about AWS resources (namespaces, workgroups, snapshots, etc.):
@@ -876,6 +1150,12 @@ Key Migration Patterns:
    - Configure serverless snapshot copy: configure_serverless_snapshot_copy(namespace_name, destination_region, retention_period, region)
    - Note: Serverless uses automatic maintenance windows, but you can configure snapshot copy
 
+6. USAGE LIMITS:
+   - Get usage limits: get_cluster_usage_limits(cluster_id, region)
+   - Create serverless limit: create_serverless_usage_limit(workgroup_name, usage_type, amount, period, breach_action, region)
+   - Migrate limits: migrate_usage_limits_to_serverless(cluster_id, workgroup_name, region, dry_run)
+   - Note: Provisioned and serverless use different limit types (spectrum/concurrency-scaling vs RPU-hours)
+
 Always ask clarifying questions:
 - What's the cluster ID?
 - What AWS region?
@@ -883,6 +1163,7 @@ Always ask clarifying questions:
 - Do they have existing serverless resources?
 - Do they want to migrate scheduled queries?
 - Do they have cross-region snapshot copy enabled?
+- Do they have usage limits configured?
 
 When migrating scheduled queries:
 - First list them to show what will be migrated
@@ -895,6 +1176,13 @@ When migrating maintenance and snapshot settings:
 - Check if cross-region snapshot copy is enabled on the source cluster
 - If enabled, configure it for the serverless namespace with the same destination region
 - Maintenance track information is captured but serverless handles updates automatically
+
+When migrating usage limits:
+- Explain that provisioned and serverless use different limit types
+- Provisioned: spectrum, concurrency-scaling, cross-region-datasharing
+- Serverless: serverless-compute (measured in RPU-hours)
+- Provide recommendations for equivalent serverless limits
+- Offer dry-run to preview recommendations before creating limits
 
 Be conversational, friendly, and explain technical concepts simply. Celebrate successful migrations!
 
@@ -924,6 +1212,7 @@ def create_agent():
             list_redshift_clusters,
             get_cluster_maintenance_settings,
             get_cluster_snapshot_copy_settings,
+            get_cluster_usage_limits,
             # Migration-specific tools
             extract_cluster_config,
             migrate_cluster,
@@ -933,6 +1222,8 @@ def create_agent():
             migrate_scheduled_queries,
             # Serverless configuration tools
             configure_serverless_snapshot_copy,
+            create_serverless_usage_limit,
+            migrate_usage_limits_to_serverless,
             # Help system
             get_migration_help,
         ],

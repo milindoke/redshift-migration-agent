@@ -50,6 +50,17 @@ class ParameterGroupInfo(BaseModel):
     tags: Dict[str, str] = Field(default_factory=dict)
 
 
+class UsageLimit(BaseModel):
+    """Usage limit configuration."""
+    limit_id: str
+    feature_type: str  # spectrum, concurrency-scaling, cross-region-datasharing
+    limit_type: str  # time, data-scanned
+    amount: int
+    period: str  # daily, weekly, monthly
+    breach_action: str  # log, emit-metric, disable
+    tags: Dict[str, str] = Field(default_factory=dict)
+
+
 class ProvisionedClusterConfig(BaseModel):
     """Complete provisioned cluster configuration."""
     cluster_identifier: str
@@ -63,6 +74,7 @@ class ProvisionedClusterConfig(BaseModel):
     maintenance_window: Optional[str] = None
     maintenance_track: Optional[str] = None
     snapshot_copy_config: Optional[Dict[str, Any]] = None
+    usage_limits: List[UsageLimit] = Field(default_factory=list)
     tags: Dict[str, str] = Field(default_factory=dict)
     raw_config: Dict[str, Any] = Field(default_factory=dict)
 

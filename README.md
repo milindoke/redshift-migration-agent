@@ -21,6 +21,7 @@ This AI agent helps you migrate from AWS Redshift Provisioned clusters to Redshi
 - ✅ Mapping parameter groups to Serverless equivalents
 - ✅ Migrating scheduled queries from EventBridge to Serverless
 - ✅ Carrying over maintenance track and cross-region snapshot copy settings
+- ✅ Migrating usage limits with intelligent recommendations for Serverless
 - ✅ Providing conversational guidance throughout the process
 
 ## 🚀 Quick Deploy (3 Minutes)
@@ -111,6 +112,12 @@ Agent: [Shows cross-region snapshot copy configuration]
 You: "Configure snapshot copy for my-namespace to us-west-2 with 7 day retention"
 Agent: [Configures cross-region snapshot copy for serverless]
 
+You: "Get usage limits for prod-db-1"
+Agent: [Shows usage limits configured on the cluster]
+
+You: "Migrate usage limits from prod-db-1 to my-serverless-wg"
+Agent: [Provides recommendations for serverless usage limits]
+
 You: "What's the status of my migration?"
 Agent: [Checks and reports status]
 ```
@@ -189,6 +196,13 @@ First 1M Lambda requests are free!
 - Preserve retention periods and KMS encryption settings
 - Note: Serverless uses automatic maintenance (no manual windows)
 
+### Usage Limits
+- Extract usage limits from provisioned clusters (spectrum, concurrency-scaling, datasharing)
+- Get intelligent recommendations for serverless limits (RPU-hours)
+- Create usage limits for serverless workgroups
+- Support for daily, weekly, and monthly periods
+- Configurable breach actions (log, emit-metric, deactivate)
+
 ### Conversational Interface
 - Natural language queries
 - Step-by-step guidance
@@ -202,6 +216,7 @@ First 1M Lambda requests are free!
 - [Chat Guide](docs/guides/CHAT_GUIDE.md) - Complete chat documentation
 - [Scheduled Query Migration](docs/guides/SCHEDULED_QUERIES.md) - Migrate scheduled queries
 - [Maintenance & Snapshot Settings](docs/guides/MAINTENANCE_AND_SNAPSHOTS.md) - Migrate maintenance and snapshot copy
+- [Usage Limits Migration](docs/guides/USAGE_LIMITS.md) - Migrate and configure usage limits
 - [Security Setup](docs/guides/SECURE_ACCESS.md) - IAM and access control
 - [Project Structure](PROJECT_STRUCTURE.md) - Navigate the codebase
 - [Migration Patterns](docs/QUICKSTART.md) - Common migration scenarios

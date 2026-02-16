@@ -66,6 +66,7 @@ cat > /tmp/comprehensive_policy.json << 'EOF'
         "redshift:DescribeEventSubscriptions",
         "redshift:DescribeLoggingStatus",
         "redshift:DescribeTags",
+        "redshift:DescribeUsageLimits",
         "redshift:CreateClusterSnapshot",
         "redshift:ModifyCluster",
         "redshift:CreateTags",
@@ -95,7 +96,11 @@ cat > /tmp/comprehensive_policy.json << 'EOF'
         "redshift-serverless:CreateSnapshotCopyConfiguration",
         "redshift-serverless:UpdateSnapshotCopyConfiguration",
         "redshift-serverless:DeleteSnapshotCopyConfiguration",
-        "redshift-serverless:ListSnapshotCopyConfigurations"
+        "redshift-serverless:ListSnapshotCopyConfigurations",
+        "redshift-serverless:CreateUsageLimit",
+        "redshift-serverless:UpdateUsageLimit",
+        "redshift-serverless:DeleteUsageLimit",
+        "redshift-serverless:ListUsageLimits"
       ],
       "Resource": "*"
     },

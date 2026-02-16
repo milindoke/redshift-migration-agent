@@ -49,6 +49,7 @@ class ProvisionedClusterExtractor:
             maintenance_window=cluster.get("PreferredMaintenanceWindow"),
             maintenance_track=cluster.get("MaintenanceTrackName"),
             snapshot_copy_config=self._extract_snapshot_copy_config(cluster),
+            usage_limits=self._extract_usage_limits(cluster_identifier),
             tags=self._extract_tags(cluster_identifier),
             raw_config=cluster,
         )
@@ -218,3 +219,40 @@ class ProvisionedClusterExtractor:
         except Exception as e:
             print(f"Warning: Could not extract snapshot copy config: {e}")
             return None
+
+    def _extract_usage_limits(self, cluster_identifier: str) -> List:
+        """Extract usage limits from the cluster."""
+        from ..models import UsageLimit
+        
+        usage_limits = []
+        
+        try:
+            # Get cluster ARN for usage limit lookup
+            response = self.redshift.describe_clusters(ClusterIdentifier=cluster_identifier)
+            if not response.get("Clusters"):
+                return usage_limits
+            
+            cluster_arn = response["Clusters"][0].get("ClusterNamespaceArn")
+            if not cluster_arn:
+                # Construct ARN if not provided
+                cluster_arn = f"arn:aws:redshift:{self.region}:*:cluster:{cluster_identifier}"
+            
+            # List usage limits for this cluster
+            paginator = self.redshift.get_paginator("describe_usage_limits")
+            for page in paginator.paginate(ClusterIdentifier=cluster_identifier):
+                for limit in page.get("UsageLimits", []):
+                    usage_limits.append(
+                        UsageLimit(
+                            limit_id=limit.get("UsageLimitId"),
+                            feature_type=limit.get("FeatureType"),
+                            limit_type=limit.get("LimitType"),
+                            amount=limit.get("Amount"),
+                            period=limit.get("Period"),
+                            breach_action=limit.get("BreachAction"),
+                            tags={tag["Key"]: tag["Value"] for tag in limit.get("Tags", [])},
+                        )
+                    )
+        except Exception as e:
+            print(f"Warning: Could not extract usage limits: {e}")
+        
+        return usage_limits
