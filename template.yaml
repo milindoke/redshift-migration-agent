@@ -22,8 +22,8 @@ Parameters:
     
   FunctionMemorySize:
     Type: Number
-    Default: 2048
-    MinValue: 512
+    Default: 256
+    MinValue: 128
     MaxValue: 10240
     Description: Lambda function memory size in MB
 
