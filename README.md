@@ -2,7 +2,7 @@
 
 AI-powered agent to migrate AWS Redshift Provisioned clusters to Serverless with zero downtime.
 
-[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-orange?logo=amazon-aws)](https://serverlessrepo.aws.amazon.com/applications/YOUR-APP-ID)
+[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-orange?logo=amazon-aws)](https://github.com/milindoke/redshift-migration-agent)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
@@ -19,29 +19,46 @@ This AI agent helps you migrate from AWS Redshift Provisioned clusters to Redshi
 
 ## 🚀 Quick Deploy (3 Minutes)
 
-### Option 1: One-Click AWS Console
+### Option 1: AWS SAM CLI (Recommended)
 
-1. Click: [![Deploy](https://img.shields.io/badge/Deploy-AWS%20Console-orange)](https://console.aws.amazon.com/lambda/home#/create/app?applicationId=YOUR-APP-ID)
-2. Click "Deploy"
-3. Done! ✅
+```bash
+# Clone the repository
+git clone https://github.com/milindoke/redshift-migration-agent.git
+cd redshift-migration-agent
+
+# Deploy using SAM
+sam build
+sam deploy --guided
+```
 
 ### Option 2: AWS CLI
 
 ```bash
-# Deploy the stack
-aws serverlessrepo create-cloud-formation-change-set \
-  --application-id arn:aws:serverlessrepo:us-east-1:YOUR-ACCOUNT:applications/redshift-migration-agent \
-  --stack-name redshift-agent \
-  --capabilities CAPABILITY_IAM
+# Clone and package
+git clone https://github.com/milindoke/redshift-migration-agent.git
+cd redshift-migration-agent
 
-# Execute the change set
-aws cloudformation execute-change-set --change-set-name <change-set-name>
+# Create S3 bucket for deployment
+aws s3 mb s3://redshift-agent-deployment-$(aws sts get-caller-identity --query Account --output text)
+
+# Package and deploy
+sam package \
+  --template-file template.yaml \
+  --output-template-file packaged.yaml \
+  --s3-bucket redshift-agent-deployment-$(aws sts get-caller-identity --query Account --output text)
+
+sam deploy \
+  --template-file packaged.yaml \
+  --stack-name redshift-migration-agent \
+  --capabilities CAPABILITY_NAMED_IAM
 ```
 
-### Option 3: SAM CLI
+### Option 3: Quick Deploy Script
 
 ```bash
-sam deploy --guided
+git clone https://github.com/milindoke/redshift-migration-agent.git
+cd redshift-migration-agent
+./quick_deploy.sh
 ```
 
 ## 💬 How to Use

@@ -17,6 +17,8 @@ lambda_deployment.zip
 *.bak
 response.json
 .agent-credentials
+packaged.yaml
+samconfig.toml
 
 # IDE
 .vscode/
@@ -36,5 +38,4 @@ cluster-config.json
 *.pem
 *.key
 .env
-.kiro/settings/mcp.json
 .kiro/settings/mcp.json
