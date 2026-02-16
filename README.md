@@ -19,7 +19,7 @@ This AI agent helps you migrate from AWS Redshift Provisioned clusters to Redshi
 - ✅ Creating snapshots and restoring to Serverless
 - ✅ Migrating IAM roles, VPC settings, and security groups
 - ✅ Mapping parameter groups to Serverless equivalents
-- ✅ Migrating scheduled queries (EventBridge)
+- ✅ Migrating scheduled queries from EventBridge to Serverless
 - ✅ Providing conversational guidance throughout the process
 
 ## 🚀 Quick Deploy (3 Minutes)
@@ -95,8 +95,14 @@ Agent: [Lists all clusters with details]
 You: "Extract configuration from cluster prod-db-1"
 Agent: [Extracts IAM roles, VPC, parameters, etc.]
 
+You: "List scheduled queries for prod-db-1"
+Agent: [Shows all EventBridge scheduled queries]
+
 You: "Migrate cluster prod-db-1 to serverless with snapshot"
 Agent: [Guides through migration process]
+
+You: "Migrate scheduled queries from prod-db-1 to my-serverless-wg"
+Agent: [Migrates all scheduled queries to serverless workgroup]
 
 You: "What's the status of my migration?"
 Agent: [Checks and reports status]
@@ -151,7 +157,7 @@ First 1M Lambda requests are free!
 - IAM roles and default role designation
 - VPC configuration (subnets, security groups)
 - Parameter groups (10+ parameters)
-- Scheduled queries (EventBridge)
+- Scheduled queries (EventBridge Rules & Scheduler)
 - Snapshot schedules
 - Tags and logging
 
@@ -159,8 +165,15 @@ First 1M Lambda requests are free!
 - Automatic snapshot creation
 - Smart parameter mapping
 - VPC and security group migration
-- Scheduled query migration
+- Scheduled query migration to serverless workgroups
 - Price-performance optimization
+
+### Scheduled Query Migration
+- Extract queries from EventBridge Rules and Scheduler
+- Recreate queries to target serverless workgroups
+- Preserve schedule expressions and query logic
+- Automatic IAM role creation for query execution
+- Dry-run mode to preview changes
 
 ### Conversational Interface
 - Natural language queries
@@ -173,6 +186,7 @@ First 1M Lambda requests are free!
 - [Quick Start - Chat Interface](docs/guides/START_CHATTING.md) - Start here!
 - [Deployment Guide](docs/deployment/DEPLOY_NOW.md) - Deploy the agent
 - [Chat Guide](docs/guides/CHAT_GUIDE.md) - Complete chat documentation
+- [Scheduled Query Migration](docs/guides/SCHEDULED_QUERIES.md) - Migrate scheduled queries
 - [Security Setup](docs/guides/SECURE_ACCESS.md) - IAM and access control
 - [Project Structure](PROJECT_STRUCTURE.md) - Navigate the codebase
 - [Migration Patterns](docs/QUICKSTART.md) - Common migration scenarios

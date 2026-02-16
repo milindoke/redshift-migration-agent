@@ -150,8 +150,11 @@ cat > /tmp/comprehensive_policy.json << 'EOF'
       "Action": [
         "events:DescribeRule",
         "events:ListRules",
+        "events:ListTargetsByRule",
         "events:PutRule",
-        "events:PutTargets"
+        "events:PutTargets",
+        "events:RemoveTargets",
+        "events:DeleteRule"
       ],
       "Resource": "*"
     },
@@ -160,7 +163,20 @@ cat > /tmp/comprehensive_policy.json << 'EOF'
       "Action": [
         "scheduler:GetSchedule",
         "scheduler:ListSchedules",
-        "scheduler:CreateSchedule"
+        "scheduler:ListScheduleGroups",
+        "scheduler:CreateSchedule",
+        "scheduler:UpdateSchedule",
+        "scheduler:DeleteSchedule"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "redshift-data:ExecuteStatement",
+        "redshift-data:DescribeStatement",
+        "redshift-data:GetStatementResult",
+        "redshift-data:ListStatements"
       ],
       "Resource": "*"
     }

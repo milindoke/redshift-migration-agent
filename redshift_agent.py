@@ -239,16 +239,315 @@ def apply_configuration(
 
 
 @tool
+def list_scheduled_queries(cluster_id: str, region: str = None) -> str:
+    """List all scheduled queries associated with a Redshift provisioned cluster.
+    
+    This extracts scheduled queries from both EventBridge Rules and EventBridge Scheduler
+    that target the specified cluster.
+    
+    Args:
+        cluster_id: The provisioned cluster ID to check for scheduled queries
+        region: AWS region (optional, uses default if not specified)
+    
+    Returns:
+        JSON list of scheduled queries with their schedules, SQL, and status
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        # Use boto3 to extract scheduled queries
+        events = boto3.client("events", region_name=region)
+        scheduler = boto3.client("scheduler", region_name=region)
+        
+        scheduled_queries = []
+        
+        # Extract from EventBridge Rules
+        try:
+            paginator = events.get_paginator("list_rules")
+            for page in paginator.paginate():
+                for rule in page.get("Rules", []):
+                    rule_name = rule.get("Name")
+                    
+                    # Get targets for this rule
+                    targets_response = events.list_targets_by_rule(Rule=rule_name)
+                    
+                    for target in targets_response.get("Targets", []):
+                        if "redshift-data" in target.get("Arn", ""):
+                            input_str = target.get("Input", "{}")
+                            input_data = json.loads(input_str)
+                            
+                            if input_data.get("ClusterIdentifier") == cluster_id:
+                                scheduled_queries.append({
+                                    "name": rule_name,
+                                    "type": "EventBridge Rule",
+                                    "schedule": rule.get("ScheduleExpression", ""),
+                                    "query": input_data.get("Sql", "")[:100] + "...",
+                                    "database": input_data.get("Database", ""),
+                                    "enabled": rule.get("State") == "ENABLED"
+                                })
+        except Exception as e:
+            print(f"Warning: Could not extract EventBridge rules: {e}")
+        
+        # Extract from EventBridge Scheduler
+        try:
+            groups_response = scheduler.list_schedule_groups()
+            
+            for group in groups_response.get("ScheduleGroups", []):
+                group_name = group.get("Name")
+                schedules_response = scheduler.list_schedules(GroupName=group_name)
+                
+                for schedule in schedules_response.get("Schedules", []):
+                    schedule_name = schedule.get("Name")
+                    schedule_detail = scheduler.get_schedule(
+                        Name=schedule_name,
+                        GroupName=group_name
+                    )
+                    
+                    target = schedule_detail.get("Target", {})
+                    if "redshift-data" in target.get("Arn", ""):
+                        input_data = json.loads(target.get("Input", "{}"))
+                        
+                        if input_data.get("ClusterIdentifier") == cluster_id:
+                            scheduled_queries.append({
+                                "name": schedule_name,
+                                "type": "EventBridge Scheduler",
+                                "schedule": schedule_detail.get("ScheduleExpression", ""),
+                                "query": input_data.get("Sql", "")[:100] + "...",
+                                "database": input_data.get("Database", ""),
+                                "enabled": schedule_detail.get("State") == "ENABLED"
+                            })
+        except Exception as e:
+            print(f"Warning: Could not extract EventBridge Scheduler schedules: {e}")
+        
+        if not scheduled_queries:
+            return f"No scheduled queries found for cluster '{cluster_id}'"
+        
+        return json.dumps({
+            "cluster_id": cluster_id,
+            "total_queries": len(scheduled_queries),
+            "scheduled_queries": scheduled_queries
+        }, indent=2)
+        
+    except ClientError as e:
+        return f"AWS API Error: {e.response['Error']['Code']} - {e.response['Error']['Message']}"
+    except Exception as e:
+        return f"Error listing scheduled queries: {str(e)}"
+
+
+@tool
+def migrate_scheduled_queries(
+    cluster_id: str,
+    workgroup_name: str,
+    namespace_name: str = None,
+    region: str = None,
+    dry_run: bool = False
+) -> str:
+    """Migrate scheduled queries from a provisioned cluster to a serverless workgroup.
+    
+    This extracts scheduled queries from the provisioned cluster and recreates them
+    to target the serverless workgroup using EventBridge Scheduler.
+    
+    Args:
+        cluster_id: Source provisioned cluster ID
+        workgroup_name: Target serverless workgroup name
+        namespace_name: Target namespace name (defaults to workgroup_name)
+        region: AWS region (optional, uses default if not specified)
+        dry_run: Preview changes without applying (default: False)
+    
+    Returns:
+        Migration results showing which queries were migrated
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        events = boto3.client("events", region_name=region)
+        scheduler = boto3.client("scheduler", region_name=region)
+        iam = boto3.client("iam", region_name=region)
+        
+        if not namespace_name:
+            namespace_name = workgroup_name
+        
+        results = {
+            "cluster_id": cluster_id,
+            "workgroup_name": workgroup_name,
+            "namespace_name": namespace_name,
+            "dry_run": dry_run,
+            "migrated_queries": []
+        }
+        
+        # Get or create execution role for EventBridge
+        role_name = "RedshiftScheduledQueryExecutionRole"
+        try:
+            role_response = iam.get_role(RoleName=role_name)
+            execution_role_arn = role_response["Role"]["Arn"]
+        except iam.exceptions.NoSuchEntityException:
+            if dry_run:
+                execution_role_arn = f"arn:aws:iam::ACCOUNT_ID:role/{role_name}"
+            else:
+                # Create the role
+                trust_policy = {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": {"Service": "scheduler.amazonaws.com"},
+                        "Action": "sts:AssumeRole"
+                    }]
+                }
+                
+                role_response = iam.create_role(
+                    RoleName=role_name,
+                    AssumeRolePolicyDocument=json.dumps(trust_policy),
+                    Description="Allows EventBridge Scheduler to execute Redshift queries"
+                )
+                execution_role_arn = role_response["Role"]["Arn"]
+                
+                # Attach policy for Redshift Data API
+                policy_document = {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Action": [
+                            "redshift-data:ExecuteStatement",
+                            "redshift-data:DescribeStatement",
+                            "redshift-data:GetStatementResult"
+                        ],
+                        "Resource": "*"
+                    }]
+                }
+                
+                iam.put_role_policy(
+                    RoleName=role_name,
+                    PolicyName="RedshiftDataAPIAccess",
+                    PolicyDocument=json.dumps(policy_document)
+                )
+        
+        # Extract scheduled queries from provisioned cluster
+        scheduled_queries = []
+        
+        # From EventBridge Rules
+        paginator = events.get_paginator("list_rules")
+        for page in paginator.paginate():
+            for rule in page.get("Rules", []):
+                rule_name = rule.get("Name")
+                targets_response = events.list_targets_by_rule(Rule=rule_name)
+                
+                for target in targets_response.get("Targets", []):
+                    if "redshift-data" in target.get("Arn", ""):
+                        input_str = target.get("Input", "{}")
+                        input_data = json.loads(input_str)
+                        
+                        if input_data.get("ClusterIdentifier") == cluster_id:
+                            scheduled_queries.append({
+                                "name": rule_name,
+                                "schedule": rule.get("ScheduleExpression", ""),
+                                "query": input_data.get("Sql", ""),
+                                "database": input_data.get("Database", ""),
+                                "enabled": rule.get("State") == "ENABLED"
+                            })
+        
+        # Migrate each query
+        for query in scheduled_queries:
+            schedule_name = f"{workgroup_name}-{query['name']}"
+            
+            target_input = {
+                "WorkgroupName": workgroup_name,
+                "Database": query["database"],
+                "Sql": query["query"]
+            }
+            
+            if dry_run:
+                results["migrated_queries"].append({
+                    "original_name": query["name"],
+                    "new_name": schedule_name,
+                    "schedule": query["schedule"],
+                    "database": query["database"],
+                    "status": "DRY_RUN - would be created"
+                })
+            else:
+                try:
+                    response = scheduler.create_schedule(
+                        Name=schedule_name,
+                        ScheduleExpression=query["schedule"],
+                        Target={
+                            "Arn": f"arn:aws:scheduler:::aws-sdk:redshiftdata:executeStatement",
+                            "RoleArn": execution_role_arn,
+                            "Input": json.dumps(target_input)
+                        },
+                        FlexibleTimeWindow={"Mode": "OFF"},
+                        State="ENABLED" if query["enabled"] else "DISABLED"
+                    )
+                    
+                    results["migrated_queries"].append({
+                        "original_name": query["name"],
+                        "new_name": schedule_name,
+                        "schedule": query["schedule"],
+                        "database": query["database"],
+                        "status": "created",
+                        "schedule_arn": response.get("ScheduleArn")
+                    })
+                except scheduler.exceptions.ConflictException:
+                    results["migrated_queries"].append({
+                        "original_name": query["name"],
+                        "new_name": schedule_name,
+                        "status": "already_exists"
+                    })
+                except Exception as e:
+                    results["migrated_queries"].append({
+                        "original_name": query["name"],
+                        "new_name": schedule_name,
+                        "status": "error",
+                        "error": str(e)
+                    })
+        
+        results["total_migrated"] = len([q for q in results["migrated_queries"] if q["status"] in ["created", "already_exists"]])
+        
+        return json.dumps(results, indent=2)
+        
+    except ClientError as e:
+        return f"AWS API Error: {e.response['Error']['Code']} - {e.response['Error']['Message']}"
+    except Exception as e:
+        return f"Error migrating scheduled queries: {str(e)}"
+
+
+@tool
 def get_migration_help(topic: str = None) -> str:
     """Get help information about the migration tool.
     
     Args:
-        topic: Specific topic to get help on (extract, apply, migrate, or general)
+        topic: Specific topic to get help on (extract, apply, migrate, scheduled_queries, or general)
     
     Returns:
         Help text for the specified topic
     """
-    if topic == "extract":
+    if topic == "scheduled_queries":
+        return """
+Scheduled Query Migration:
+Migrate scheduled queries from provisioned cluster to serverless workgroup.
+
+Available Tools:
+1. list_scheduled_queries - List all scheduled queries for a cluster
+2. migrate_scheduled_queries - Migrate queries to serverless workgroup
+
+How it works:
+- Extracts queries from EventBridge Rules and EventBridge Scheduler
+- Recreates them to target the serverless workgroup
+- Uses Redshift Data API for serverless execution
+- Preserves schedule expressions and query SQL
+- Maintains enabled/disabled state
+
+Example workflow:
+1. List queries: list_scheduled_queries(cluster_id="my-cluster")
+2. Preview migration: migrate_scheduled_queries(cluster_id="my-cluster", 
+                                                 workgroup_name="my-wg", 
+                                                 dry_run=True)
+3. Migrate: migrate_scheduled_queries(cluster_id="my-cluster", 
+                                       workgroup_name="my-wg")
+
+Note: Requires EventBridge and Redshift Data API permissions.
+"""
+    elif topic == "extract":
         return """
 Extract Command:
 Extracts configuration from a provisioned cluster without making any changes.
@@ -305,15 +604,17 @@ Commands:
 1. extract - Extract configuration from provisioned cluster
 2. apply - Apply configuration to serverless workgroup
 3. migrate - Full migration (extract + apply)
+4. list_scheduled_queries - List scheduled queries for a cluster
+5. migrate_scheduled_queries - Migrate scheduled queries to serverless
 
 Key Concepts:
 - Namespace: Contains database, users, and data
 - Workgroup: Compute resources that query the namespace
 - Snapshots: Preserve all data from provisioned cluster
 - Parameter Mapping: Automatically maps 10+ parameters
-- Scheduled Queries: Migrates EventBridge rules
+- Scheduled Queries: Migrates EventBridge rules to target serverless workgroup
 
-Use get_migration_help with topic='extract', 'apply', or 'migrate' for detailed help.
+Use get_migration_help with topic='extract', 'apply', 'migrate', or 'scheduled_queries' for detailed help.
 """
 
 
@@ -333,6 +634,8 @@ Available Tools:
 - extract_cluster_config: Extract configuration from a specific provisioned cluster
 - migrate_cluster: Full migration (extract + apply)
 - apply_configuration: Apply extracted config to serverless
+- list_scheduled_queries: List scheduled queries for a provisioned cluster
+- migrate_scheduled_queries: Migrate scheduled queries to serverless workgroup
 - get_migration_help: Context-aware help system
 
 When users ask about AWS resources (namespaces, workgroups, snapshots, etc.):
@@ -362,11 +665,24 @@ Key Migration Patterns:
    - Migrate settings without snapshot
    - Creates empty namespace with credentials
 
+4. SCHEDULED QUERIES:
+   - List scheduled queries: list_scheduled_queries(cluster_id, region)
+   - Migrate queries: migrate_scheduled_queries(cluster_id, workgroup_name, namespace_name, region, dry_run)
+   - Queries are recreated to target the serverless workgroup
+   - Uses EventBridge Scheduler and Redshift Data API
+
 Always ask clarifying questions:
 - What's the cluster ID?
 - What AWS region?
 - Do they want to migrate data (snapshot) or just configuration?
 - Do they have existing serverless resources?
+- Do they want to migrate scheduled queries?
+
+When migrating scheduled queries:
+- First list them to show what will be migrated
+- Offer dry-run to preview changes
+- Explain that queries will use Redshift Data API in serverless
+- Mention that IAM role for EventBridge will be created if needed
 
 Be conversational, friendly, and explain technical concepts simply. Celebrate successful migrations!
 
@@ -398,6 +714,10 @@ def create_agent():
             extract_cluster_config,
             migrate_cluster,
             apply_configuration,
+            # Scheduled query tools
+            list_scheduled_queries,
+            migrate_scheduled_queries,
+            # Help system
             get_migration_help,
         ],
         system_prompt=SYSTEM_PROMPT,
