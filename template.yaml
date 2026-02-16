@@ -117,12 +117,12 @@ Resources:
   AgentFunction:
     Type: AWS::Serverless::Function
     Metadata:
-      BuildMethod: python3.11
+      BuildMethod: python3.12
       BuildArchitecture: x86_64
     Properties:
       FunctionName: redshift-migration-agent
       Description: AI agent for migrating Redshift Provisioned to Serverless
-      Runtime: python3.11
+      Runtime: python3.12
       Handler: lambda_handler.lambda_handler
       CodeUri: .
       MemorySize: !Ref FunctionMemorySize
