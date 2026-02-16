@@ -1,0 +1,12 @@
+# Strands Agent Requirements
+strands-agents>=0.1.0
+strands-agents-tools>=0.1.0
+
+# API Server (optional)
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Existing project requirements
+boto3>=1.26.0
+click>=8.1.0
+rich>=13.0.0

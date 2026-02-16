@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# AWS
+.aws-sam/
+lambda_package/
+lambda_deployment.zip
+*.bak
+response.json
+.agent-credentials
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config
+cluster-config.json
+*.log
+
+# Secrets
+*.pem
+*.key
+.env
+.kiro/settings/mcp.json
+.kiro/settings/mcp.json
