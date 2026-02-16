@@ -75,17 +75,14 @@ See [Chat Guide](docs/guides/START_CHATTING.md) for more.
 ### Via AWS CLI
 
 ```bash
-# Add yourself to the authorized users group
-aws iam add-user-to-group \
-  --user-name YOUR_USERNAME \
-  --group-name RedshiftMigrationAgentUsers
-
 # Use the agent (stateless - no memory)
 aws lambda invoke \
   --function-name redshift-migration-agent \
   --cli-binary-format raw-in-base64-out \
   --payload '{"message":"List my Redshift clusters in us-east-2"}' \
   response.json
+
+cat response.json
 
 # Use with memory (remembers across calls)
 aws lambda invoke \

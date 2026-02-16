@@ -1,27 +1,60 @@
 # Secure Access to Redshift Migration Agent
 
-Your Lambda function is now secured with IAM authentication. Only authorized users can access it.
+Your Lambda function is secured with IAM authentication. Only users with proper IAM permissions can invoke it.
 
 ## ✅ What's Configured
 
 1. **Lambda Function**: `redshift-migration-agent` (private, no public access)
-2. **IAM Policy**: `RedshiftAgentInvokePolicy` (allows invoking the function)
-3. **IAM Group**: `RedshiftAgentUsers` (authorized users)
-4. **Example User**: `redshift-agent-user` (with access keys)
+2. **IAM Role**: `AgentExecutionRole` (Lambda execution role with Redshift/Bedrock permissions)
 
-## 🔑 Access Credentials
+## 🔑 Access Control
 
-Credentials are saved in `.agent-credentials` file.
+To invoke the Lambda function, your IAM user or role needs the `lambda:InvokeFunction` permission.
 
-**Load credentials:**
+### Grant Access to Users
+
+Create an IAM policy and attach it to users who need access:
+
 ```bash
-source .agent-credentials
+# Create policy document
+cat > lambda-invoke-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:*:*:function:redshift-migration-agent"
+    }
+  ]
+}
+EOF
+
+# Attach to a user
+aws iam put-user-policy \
+  --user-name YOUR_USERNAME \
+  --policy-name RedshiftAgentInvoke \
+  --policy-document file://lambda-invoke-policy.json
+
+# Or create a managed policy for reuse
+aws iam create-policy \
+  --policy-name RedshiftAgentInvokePolicy \
+  --policy-document file://lambda-invoke-policy.json
+
+# Then attach to users
+aws iam attach-user-policy \
+  --user-name YOUR_USERNAME \
+  --policy-arn arn:aws:iam::ACCOUNT_ID:policy/RedshiftAgentInvokePolicy
 ```
 
-**Or configure AWS CLI:**
+### Grant Access to Roles
+
+For applications running on AWS (EC2, ECS, Lambda), attach the policy to their IAM role:
+
 ```bash
-aws configure
-# Enter the Access Key ID and Secret Access Key from above
+aws iam attach-role-policy \
+  --role-name YOUR_ROLE_NAME \
+  --policy-arn arn:aws:iam::ACCOUNT_ID:policy/RedshiftAgentInvokePolicy
 ```
 
 ## 📞 How to Use the Agent
@@ -71,30 +104,35 @@ result = json.loads(response['Payload'].read())
 print(result)
 ```
 
-## 👥 Adding More Users
+## 👥 Managing Access
 
-### Create a new user:
+### Add More Users
+
+Grant Lambda invoke permission to additional users:
 
 ```bash
-# Create user
-aws iam create-user --user-name john-doe
-
-# Add to authorized group
-aws iam add-user-to-group \
-  --user-name john-doe \
-  --group-name RedshiftAgentUsers
-
-# Create access keys
-aws iam create-access-key --user-name john-doe
+# Attach policy to another user
+aws iam attach-user-policy \
+  --user-name another-user \
+  --policy-arn arn:aws:iam::ACCOUNT_ID:policy/RedshiftAgentInvokePolicy
 ```
 
-### Or use existing IAM users:
+### Revoke Access
+
+Remove the policy from a user:
 
 ```bash
-# Just add them to the group
-aws iam add-user-to-group \
-  --user-name existing-user \
-  --group-name RedshiftAgentUsers
+aws iam detach-user-policy \
+  --user-name user-to-remove \
+  --policy-arn arn:aws:iam::ACCOUNT_ID:policy/RedshiftAgentInvokePolicy
+```
+
+### List Users with Access
+
+```bash
+# List users with the policy attached
+aws iam list-entities-for-policy \
+  --policy-arn arn:aws:iam::ACCOUNT_ID:policy/RedshiftAgentInvokePolicy
 ```
 
 ## 🔒 Security Features

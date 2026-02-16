@@ -146,28 +146,6 @@ Resources:
       EphemeralStorage:
         Size: 1024
 
-  # IAM Policy for Users
-  AgentInvokePolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      ManagedPolicyName: RedshiftMigrationAgentInvokePolicy
-      Description: Allows invoking the Redshift Migration Agent
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - lambda:InvokeFunction
-            Resource: !GetAtt AgentFunction.Arn
-
-  # IAM Group for Users
-  AgentUsersGroup:
-    Type: AWS::IAM::Group
-    Properties:
-      GroupName: RedshiftMigrationAgentUsers
-      ManagedPolicyArns:
-        - !Ref AgentInvokePolicy
-
 Outputs:
   FunctionArn:
     Description: Lambda Function ARN
@@ -175,21 +153,11 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-FunctionArn'
 
-  UserGroupName:
-    Description: IAM Group for authorized users
-    Value: !Ref AgentUsersGroup
-    Export:
-      Name: !Sub '${AWS::StackName}-UserGroup'
+  FunctionName:
+    Description: Lambda Function Name
+    Value: !Ref AgentFunction
 
-  InvokePolicyArn:
-    Description: IAM Policy ARN for invoking the agent
-    Value: !Ref AgentInvokePolicy
-    Export:
-      Name: !Sub '${AWS::StackName}-InvokePolicy'
-
-  QuickStartGuide:
-    Description: Quick start instructions
+  InvokeCommand:
+    Description: Command to invoke the agent
     Value: !Sub |
-      1. Add users to group: aws iam add-user-to-group --user-name YOUR_USER --group-name ${AgentUsersGroup}
-      2. Invoke via CLI: aws lambda invoke --function-name ${AgentFunction} --region ${AWS::Region} --payload '{"message":"List clusters"}' response.json
-      3. View response: cat response.json
+      aws lambda invoke --function-name ${AgentFunction} --payload '{"message":"List clusters","session_id":"my-session"}' response.json && cat response.json

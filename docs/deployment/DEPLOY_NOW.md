@@ -105,27 +105,19 @@ The deployment creates:
 3. **IAM Policy**: `RedshiftAgentExecutionPolicy`
    - Managed policy with all required permissions
 
-4. **IAM Group**: `RedshiftMigrationAgentUsers`
-   - For authorized users
-
-5. **IAM Policy**: `RedshiftMigrationAgentInvokePolicy`
-   - Allows invoking the Lambda function
-
-6. **API Gateway**: HTTP API endpoint (optional)
-   - For REST API access
-
 ## After Deployment
 
-### 1. Add Yourself to Authorized Users
+### 1. Verify Deployment
 
 ```bash
-# Get your IAM username
-aws iam get-user --query 'User.UserName' --output text
+# Check Lambda function exists
+aws lambda get-function --function-name redshift-migration-agent
 
-# Add yourself to the group
-aws iam add-user-to-group \
-  --user-name YOUR_USERNAME \
-  --group-name RedshiftMigrationAgentUsers
+# Get function ARN
+aws lambda get-function \
+  --function-name redshift-migration-agent \
+  --query 'Configuration.FunctionArn' \
+  --output text
 ```
 
 ### 2. Test the Agent

@@ -140,11 +140,28 @@ aws lambda get-function \
 
 ### "Permission denied"
 
+Make sure your AWS credentials have permission to invoke Lambda functions. You can attach the Lambda invoke policy to your IAM user or role:
+
 ```bash
-# Add yourself to the authorized group
-aws iam add-user-to-group \
+# Create a policy document
+cat > lambda-invoke-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:*:*:function:redshift-migration-agent"
+    }
+  ]
+}
+EOF
+
+# Attach to your user
+aws iam put-user-policy \
   --user-name YOUR_USERNAME \
-  --group-name RedshiftMigrationAgentUsers
+  --policy-name RedshiftAgentInvoke \
+  --policy-document file://lambda-invoke-policy.json
 ```
 
 ## Tips for Great Conversations

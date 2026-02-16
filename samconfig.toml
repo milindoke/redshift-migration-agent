@@ -6,7 +6,6 @@ version = 0.1
 stack_name = "redshift-migration-agent"
 resolve_s3 = true
 s3_prefix = "redshift-migration-agent"
-region = "us-east-2"
 capabilities = "CAPABILITY_NAMED_IAM"
 parameter_overrides = "BedrockModelId=\"us.anthropic.claude-sonnet-4-5-20250929-v1:0\" FunctionMemorySize=\"256\" FunctionTimeout=\"900\""
 image_repositories = []
