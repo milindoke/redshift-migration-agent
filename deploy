@@ -1,0 +1,3 @@
+#!/bin/bash
+# Convenience wrapper for deployment
+exec scripts/deployment/quick_deploy.sh "$@"

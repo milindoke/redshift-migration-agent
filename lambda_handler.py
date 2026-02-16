@@ -62,7 +62,15 @@ def lambda_handler(event, context):
         logger.info(f"Processing message: {message[:100]}...")
         
         # Get response from agent
-        response = agent(message)
+        result = agent(message)
+        
+        # Extract response text from AgentResult
+        if hasattr(result, 'text'):
+            response = result.text
+        elif hasattr(result, 'content'):
+            response = result.content
+        else:
+            response = str(result)
         
         logger.info(f"Generated response: {response[:100]}...")
         

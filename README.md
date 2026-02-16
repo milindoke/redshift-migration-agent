@@ -24,49 +24,49 @@ This AI agent helps you migrate from AWS Redshift Provisioned clusters to Redshi
 
 ## 🚀 Quick Deploy (3 Minutes)
 
-### Option 1: AWS SAM CLI (Recommended)
+### One-Command Deploy
 
 ```bash
 # Clone the repository
 git clone https://github.com/milindoke/redshift-migration-agent.git
 cd redshift-migration-agent
 
-# Deploy using SAM
-sam build
+# Deploy (that's it!)
+./deploy
+```
+
+### Manual Deploy
+
+```bash
+# Using SAM CLI
+sam build --use-container
 sam deploy --guided
 ```
 
-### Option 2: AWS CLI
-
-```bash
-# Clone and package
-git clone https://github.com/milindoke/redshift-migration-agent.git
-cd redshift-migration-agent
-
-# Create S3 bucket for deployment
-aws s3 mb s3://redshift-agent-deployment-$(aws sts get-caller-identity --query Account --output text)
-
-# Package and deploy
-sam package \
-  --template-file template.yaml \
-  --output-template-file packaged.yaml \
-  --s3-bucket redshift-agent-deployment-$(aws sts get-caller-identity --query Account --output text)
-
-sam deploy \
-  --template-file packaged.yaml \
-  --stack-name redshift-migration-agent \
-  --capabilities CAPABILITY_NAMED_IAM
-```
-
-### Option 3: Quick Deploy Script
-
-```bash
-git clone https://github.com/milindoke/redshift-migration-agent.git
-cd redshift-migration-agent
-./quick_deploy.sh
-```
+See [Deployment Guide](docs/deployment/DEPLOY_NOW.md) for detailed instructions.
 
 ## 💬 How to Use
+
+### Natural Conversation Interface (Recommended)
+
+```bash
+# Start chatting with the agent
+./chat
+```
+
+Then just ask naturally:
+```
+You: List my Redshift clusters in us-east-2
+Agent: [Shows clusters]
+
+You: Tell me about the first one
+Agent: [Shows details]
+
+You: Migrate it to serverless
+Agent: [Guides through migration]
+```
+
+See [Chat Guide](docs/guides/START_CHATTING.md) for more.
 
 ### Via AWS CLI
 
@@ -84,25 +84,6 @@ aws lambda invoke \
   response.json
 
 cat response.json
-```
-
-### Via Python
-
-```python
-import boto3
-import json
-
-lambda_client = boto3.client('lambda', region_name='us-east-2')
-
-response = lambda_client.invoke(
-    FunctionName='redshift-migration-agent',
-    Payload=json.dumps({
-        'message': 'Migrate cluster my-cluster to serverless'
-    })
-)
-
-result = json.loads(response['Payload'].read())
-print(result['response'])
 ```
 
 ## 🎬 Example Conversations
@@ -189,11 +170,13 @@ First 1M Lambda requests are free!
 
 ## 📚 Documentation
 
-- [Quick Start Guide](docs/QUICKSTART.md)
-- [Migration Patterns](docs/MIGRATION_PATTERNS.md)
-- [Security Best Practices](SECURE_ACCESS.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [API Reference](docs/API_REFERENCE.md)
+- [Quick Start - Chat Interface](docs/guides/START_CHATTING.md) - Start here!
+- [Deployment Guide](docs/deployment/DEPLOY_NOW.md) - Deploy the agent
+- [Chat Guide](docs/guides/CHAT_GUIDE.md) - Complete chat documentation
+- [Security Setup](docs/guides/SECURE_ACCESS.md) - IAM and access control
+- [Project Structure](PROJECT_STRUCTURE.md) - Navigate the codebase
+- [Migration Patterns](docs/QUICKSTART.md) - Common migration scenarios
+- [Troubleshooting](docs/deployment/TROUBLESHOOT_LAMBDA.md) - Fix common issues
 
 ## 🤝 Contributing
 

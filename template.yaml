@@ -5,14 +5,14 @@ Metadata:
   AWS::ServerlessRepo::Application:
     Name: redshift-migration-agent
     Description: AI-powered agent to migrate AWS Redshift Provisioned clusters to Serverless
-    Author: Your Name
+    Author: Milind Oke
     SpdxLicenseId: MIT
     LicenseUrl: LICENSE
     ReadmeUrl: README.md
     Labels: ['redshift', 'migration', 'ai', 'agent', 'serverless', 'bedrock']
-    HomePageUrl: https://github.com/YOUR-USERNAME/redshift-migration-agent
+    HomePageUrl: https://github.com/milindoke/redshift-migration-agent
     SemanticVersion: 1.0.0
-    SourceCodeUrl: https://github.com/YOUR-USERNAME/redshift-migration-agent
+    SourceCodeUrl: https://github.com/milindoke/redshift-migration-agent
 
 Parameters:
   BedrockModelId:
@@ -35,6 +35,69 @@ Parameters:
     Description: Lambda function timeout in seconds
 
 Resources:
+  # IAM Policy for Lambda Execution
+  AgentExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: RedshiftAgentExecutionPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - redshift:DescribeClusters
+              - redshift:DescribeClusterParameters
+              - redshift:DescribeClusterParameterGroups
+              - redshift:DescribeClusterSnapshots
+              - redshift:DescribeEventSubscriptions
+              - redshift:DescribeLoggingStatus
+              - redshift:DescribeTags
+              - redshift:CreateClusterSnapshot
+              - redshift:ModifyCluster
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - redshift-serverless:GetNamespace
+              - redshift-serverless:GetWorkgroup
+              - redshift-serverless:ListNamespaces
+              - redshift-serverless:ListWorkgroups
+              - redshift-serverless:CreateNamespace
+              - redshift-serverless:CreateWorkgroup
+              - redshift-serverless:UpdateNamespace
+              - redshift-serverless:UpdateWorkgroup
+              - redshift-serverless:RestoreFromSnapshot
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - ec2:DescribeVpcs
+              - ec2:DescribeSubnets
+              - ec2:DescribeSecurityGroups
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - iam:ListRoles
+              - iam:GetRole
+              - iam:PassRole
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - events:DescribeRule
+              - events:ListRules
+              - events:PutRule
+              - events:PutTargets
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - scheduler:GetSchedule
+              - scheduler:ListSchedules
+              - scheduler:CreateSchedule
+            Resource: '*'
+
   # Lambda Execution Role
   AgentExecutionRole:
     Type: AWS::IAM::Role
@@ -48,69 +111,14 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: RedshiftAgentPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - bedrock:InvokeModel
-                  - bedrock:InvokeModelWithResponseStream
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - redshift:DescribeClusters
-                  - redshift:DescribeClusterParameters
-                  - redshift:DescribeClusterParameterGroups
-                  - redshift:DescribeClusterSnapshots
-                  - redshift:DescribeEventSubscriptions
-                  - redshift:DescribeLoggingStatus
-                  - redshift:DescribeTags
-                  - redshift:CreateClusterSnapshot
-                  - redshift:ModifyCluster
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - redshift-serverless:GetNamespace
-                  - redshift-serverless:GetWorkgroup
-                  - redshift-serverless:ListNamespaces
-                  - redshift-serverless:ListWorkgroups
-                  - redshift-serverless:CreateNamespace
-                  - redshift-serverless:CreateWorkgroup
-                  - redshift-serverless:UpdateNamespace
-                  - redshift-serverless:UpdateWorkgroup
-                  - redshift-serverless:RestoreFromSnapshot
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - ec2:DescribeVpcs
-                  - ec2:DescribeSubnets
-                  - ec2:DescribeSecurityGroups
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - iam:ListRoles
-                  - iam:GetRole
-                  - iam:PassRole
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - events:DescribeRule
-                  - events:ListRules
-                  - events:PutRule
-                  - events:PutTargets
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - scheduler:GetSchedule
-                  - scheduler:ListSchedules
-                  - scheduler:CreateSchedule
-                Resource: '*'
+        - !Ref AgentExecutionPolicy
 
   # Lambda Function
   AgentFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: python3.11
+      BuildArchitecture: x86_64
     Properties:
       FunctionName: redshift-migration-agent
       Description: AI agent for migrating Redshift Provisioned to Serverless
@@ -126,49 +134,6 @@ Resources:
       EphemeralStorage:
         Size: 1024
 
-  # API Gateway HTTP API
-  AgentApi:
-    Type: AWS::Serverless::HttpApi
-    Properties:
-      StageName: prod
-      CorsConfiguration:
-        AllowOrigins:
-          - '*'
-        AllowMethods:
-          - POST
-          - GET
-        AllowHeaders:
-          - '*'
-      Auth:
-        DefaultAuthorizer: AWS_IAM
-
-  # Lambda Permission for API Gateway
-  ApiInvokePermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref AgentFunction
-      Action: lambda:InvokeFunction
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AgentApi}/*/*'
-
-  # API Gateway Integration
-  ApiIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref AgentApi
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AgentFunction.Arn}/invocations'
-      PayloadFormatVersion: '2.0'
-
-  # API Gateway Route
-  ApiRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref AgentApi
-      RouteKey: 'POST /'
-      Target: !Sub 'integrations/${ApiIntegration}'
-      AuthorizationType: AWS_IAM
-
   # IAM Policy for Users
   AgentInvokePolicy:
     Type: AWS::IAM::ManagedPolicy
@@ -182,10 +147,6 @@ Resources:
             Action:
               - lambda:InvokeFunction
             Resource: !GetAtt AgentFunction.Arn
-          - Effect: Allow
-            Action:
-              - execute-api:Invoke
-            Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${AgentApi}/*/*'
 
   # IAM Group for Users
   AgentUsersGroup:
@@ -201,12 +162,6 @@ Outputs:
     Value: !GetAtt AgentFunction.Arn
     Export:
       Name: !Sub '${AWS::StackName}-FunctionArn'
-
-  ApiEndpoint:
-    Description: API Gateway endpoint URL
-    Value: !Sub 'https://${AgentApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
-    Export:
-      Name: !Sub '${AWS::StackName}-ApiEndpoint'
 
   UserGroupName:
     Description: IAM Group for authorized users
@@ -224,5 +179,5 @@ Outputs:
     Description: Quick start instructions
     Value: !Sub |
       1. Add users to group: aws iam add-user-to-group --user-name YOUR_USER --group-name ${AgentUsersGroup}
-      2. Invoke via CLI: aws lambda invoke --function-name ${AgentFunction} --payload '{"message":"List clusters"}' response.json
-      3. Or use API: curl -X POST ${AgentApi}.execute-api.${AWS::Region}.amazonaws.com/prod --aws-sigv4 "aws:amz:${AWS::Region}:execute-api" -d '{"message":"List clusters"}'
+      2. Invoke via CLI: aws lambda invoke --function-name ${AgentFunction} --region ${AWS::Region} --payload '{"message":"List clusters"}' response.json
+      3. View response: cat response.json
