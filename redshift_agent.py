@@ -71,6 +71,162 @@ def run_aws_command(service: str, operation: str, parameters: dict = None, regio
 
 
 @tool
+def get_cluster_maintenance_settings(cluster_id: str, region: str = None) -> str:
+    """Get maintenance track and window settings from a Redshift provisioned cluster.
+    
+    Args:
+        cluster_id: The provisioned cluster ID
+        region: AWS region (optional, uses default if not specified)
+    
+    Returns:
+        JSON with maintenance track, maintenance window, and next maintenance window
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        redshift = boto3.client("redshift", region_name=region)
+        
+        response = redshift.describe_clusters(ClusterIdentifier=cluster_id)
+        clusters = response.get("Clusters", [])
+        
+        if not clusters:
+            return f"Cluster '{cluster_id}' not found"
+        
+        cluster = clusters[0]
+        
+        settings = {
+            "cluster_id": cluster_id,
+            "maintenance_track": cluster.get("MaintenanceTrackName", "current"),
+            "maintenance_window": cluster.get("PreferredMaintenanceWindow"),
+            "next_maintenance_window": cluster.get("NextMaintenanceWindowStartTime"),
+            "allow_version_upgrade": cluster.get("AllowVersionUpgrade", True),
+            "cluster_version": cluster.get("ClusterVersion"),
+        }
+        
+        return json.dumps(settings, indent=2, default=str)
+        
+    except ClientError as e:
+        return f"AWS API Error: {e.response['Error']['Code']} - {e.response['Error']['Message']}"
+    except Exception as e:
+        return f"Error getting maintenance settings: {str(e)}"
+
+
+@tool
+def get_cluster_snapshot_copy_settings(cluster_id: str, region: str = None) -> str:
+    """Get cross-region snapshot copy settings from a Redshift provisioned cluster.
+    
+    Args:
+        cluster_id: The provisioned cluster ID
+        region: AWS region (optional, uses default if not specified)
+    
+    Returns:
+        JSON with snapshot copy configuration including destination region and retention
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        redshift = boto3.client("redshift", region_name=region)
+        
+        response = redshift.describe_clusters(ClusterIdentifier=cluster_id)
+        clusters = response.get("Clusters", [])
+        
+        if not clusters:
+            return f"Cluster '{cluster_id}' not found"
+        
+        cluster = clusters[0]
+        snapshot_copy_status = cluster.get("ClusterSnapshotCopyStatus")
+        
+        if not snapshot_copy_status:
+            return json.dumps({
+                "cluster_id": cluster_id,
+                "snapshot_copy_enabled": False,
+                "message": "Cross-region snapshot copy is not enabled for this cluster"
+            }, indent=2)
+        
+        settings = {
+            "cluster_id": cluster_id,
+            "snapshot_copy_enabled": True,
+            "destination_region": snapshot_copy_status.get("DestinationRegion"),
+            "retention_period_days": snapshot_copy_status.get("RetentionPeriod"),
+            "manual_snapshot_retention_period_days": snapshot_copy_status.get("ManualSnapshotRetentionPeriod", -1),
+            "snapshot_copy_grant_name": snapshot_copy_status.get("SnapshotCopyGrantName"),
+        }
+        
+        return json.dumps(settings, indent=2, default=str)
+        
+    except ClientError as e:
+        return f"AWS API Error: {e.response['Error']['Code']} - {e.response['Error']['Message']}"
+    except Exception as e:
+        return f"Error getting snapshot copy settings: {str(e)}"
+
+
+@tool
+def configure_serverless_snapshot_copy(
+    namespace_name: str,
+    destination_region: str,
+    retention_period: int = 7,
+    snapshot_copy_grant_name: str = None,
+    region: str = None
+) -> str:
+    """Configure cross-region snapshot copy for a Redshift Serverless namespace.
+    
+    Args:
+        namespace_name: The serverless namespace name
+        destination_region: AWS region to copy snapshots to
+        retention_period: Number of days to retain snapshots (default: 7)
+        snapshot_copy_grant_name: KMS grant name for encrypted snapshots (optional)
+        region: Source AWS region (optional, uses default if not specified)
+    
+    Returns:
+        Configuration result
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        redshift_serverless = boto3.client("redshift-serverless", region_name=region)
+        
+        # Configure snapshot copy for the namespace
+        params = {
+            "namespaceName": namespace_name,
+            "destinationRegion": destination_region,
+            "retentionPeriod": retention_period,
+        }
+        
+        if snapshot_copy_grant_name:
+            params["snapshotCopyGrantName"] = snapshot_copy_grant_name
+        
+        response = redshift_serverless.create_snapshot_copy_configuration(**params)
+        
+        result = {
+            "status": "success",
+            "namespace_name": namespace_name,
+            "destination_region": destination_region,
+            "retention_period_days": retention_period,
+            "snapshot_copy_grant": snapshot_copy_grant_name,
+            "message": f"Cross-region snapshot copy configured for namespace '{namespace_name}'"
+        }
+        
+        return json.dumps(result, indent=2)
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_msg = e.response['Error']['Message']
+        
+        if error_code == "ConflictException":
+            return json.dumps({
+                "status": "already_exists",
+                "message": f"Snapshot copy configuration already exists for namespace '{namespace_name}'"
+            }, indent=2)
+        
+        return f"AWS API Error: {error_code} - {error_msg}"
+    except Exception as e:
+        return f"Error configuring snapshot copy: {str(e)}"
+
+
+@tool
 def list_redshift_clusters(region: str = None) -> str:
     """List all Redshift provisioned clusters in the account.
     
@@ -521,7 +677,40 @@ def get_migration_help(topic: str = None) -> str:
     Returns:
         Help text for the specified topic
     """
-    if topic == "scheduled_queries":
+    if topic == "maintenance_snapshot":
+        return """
+Maintenance Track and Snapshot Copy Migration:
+Migrate maintenance and snapshot settings from provisioned to serverless.
+
+Available Tools:
+1. get_cluster_maintenance_settings - Get maintenance track and window
+2. get_cluster_snapshot_copy_settings - Get cross-region snapshot copy config
+3. configure_serverless_snapshot_copy - Set up snapshot copy for serverless
+
+Key Differences:
+- Provisioned: Manual maintenance windows (e.g., "sun:05:00-sun:05:30")
+- Serverless: Automatic maintenance windows (AWS managed)
+- Provisioned: Maintenance tracks (current, trailing, preview)
+- Serverless: Always on latest version automatically
+
+Snapshot Copy:
+- Both support cross-region snapshot copy
+- Retention periods can be migrated
+- KMS encryption grants are preserved
+- Configure after namespace creation
+
+Example workflow:
+1. Check settings: get_cluster_maintenance_settings(cluster_id="my-cluster")
+2. Check snapshot copy: get_cluster_snapshot_copy_settings(cluster_id="my-cluster")
+3. Migrate cluster to serverless
+4. Configure snapshot copy: configure_serverless_snapshot_copy(
+                              namespace_name="my-namespace",
+                              destination_region="us-west-2",
+                              retention_period=7)
+
+Note: Serverless handles maintenance automatically, no manual window needed.
+"""
+    elif topic == "scheduled_queries":
         return """
 Scheduled Query Migration:
 Migrate scheduled queries from provisioned cluster to serverless workgroup.
@@ -560,6 +749,8 @@ Extracts:
 - Parameter groups (10+ mappable parameters)
 - Scheduled queries (EventBridge Rules/Scheduler)
 - Snapshot schedules
+- Maintenance track and window
+- Cross-region snapshot copy settings
 - Tags and logging configuration
 """
     elif topic == "apply":
@@ -606,6 +797,9 @@ Commands:
 3. migrate - Full migration (extract + apply)
 4. list_scheduled_queries - List scheduled queries for a cluster
 5. migrate_scheduled_queries - Migrate scheduled queries to serverless
+6. get_cluster_maintenance_settings - Get maintenance track and window
+7. get_cluster_snapshot_copy_settings - Get cross-region snapshot copy config
+8. configure_serverless_snapshot_copy - Configure snapshot copy for serverless
 
 Key Concepts:
 - Namespace: Contains database, users, and data
@@ -613,8 +807,10 @@ Key Concepts:
 - Snapshots: Preserve all data from provisioned cluster
 - Parameter Mapping: Automatically maps 10+ parameters
 - Scheduled Queries: Migrates EventBridge rules to target serverless workgroup
+- Maintenance: Serverless uses automatic maintenance (no manual windows)
+- Snapshot Copy: Can be configured for cross-region backup
 
-Use get_migration_help with topic='extract', 'apply', 'migrate', or 'scheduled_queries' for detailed help.
+Use get_migration_help with topic='extract', 'apply', 'migrate', 'scheduled_queries', or 'maintenance_snapshot' for detailed help.
 """
 
 
@@ -636,6 +832,9 @@ Available Tools:
 - apply_configuration: Apply extracted config to serverless
 - list_scheduled_queries: List scheduled queries for a provisioned cluster
 - migrate_scheduled_queries: Migrate scheduled queries to serverless workgroup
+- get_cluster_maintenance_settings: Get maintenance track and window from provisioned cluster
+- get_cluster_snapshot_copy_settings: Get cross-region snapshot copy settings
+- configure_serverless_snapshot_copy: Configure cross-region snapshot copy for serverless namespace
 - get_migration_help: Context-aware help system
 
 When users ask about AWS resources (namespaces, workgroups, snapshots, etc.):
@@ -671,18 +870,31 @@ Key Migration Patterns:
    - Queries are recreated to target the serverless workgroup
    - Uses EventBridge Scheduler and Redshift Data API
 
+5. MAINTENANCE AND SNAPSHOT SETTINGS:
+   - Get maintenance track: get_cluster_maintenance_settings(cluster_id, region)
+   - Get snapshot copy settings: get_cluster_snapshot_copy_settings(cluster_id, region)
+   - Configure serverless snapshot copy: configure_serverless_snapshot_copy(namespace_name, destination_region, retention_period, region)
+   - Note: Serverless uses automatic maintenance windows, but you can configure snapshot copy
+
 Always ask clarifying questions:
 - What's the cluster ID?
 - What AWS region?
 - Do they want to migrate data (snapshot) or just configuration?
 - Do they have existing serverless resources?
 - Do they want to migrate scheduled queries?
+- Do they have cross-region snapshot copy enabled?
 
 When migrating scheduled queries:
 - First list them to show what will be migrated
 - Offer dry-run to preview changes
 - Explain that queries will use Redshift Data API in serverless
 - Mention that IAM role for EventBridge will be created if needed
+
+When migrating maintenance and snapshot settings:
+- Explain that serverless uses automatic maintenance windows (no manual window needed)
+- Check if cross-region snapshot copy is enabled on the source cluster
+- If enabled, configure it for the serverless namespace with the same destination region
+- Maintenance track information is captured but serverless handles updates automatically
 
 Be conversational, friendly, and explain technical concepts simply. Celebrate successful migrations!
 
@@ -710,6 +922,8 @@ def create_agent():
             run_aws_command,
             # AWS inspection tools
             list_redshift_clusters,
+            get_cluster_maintenance_settings,
+            get_cluster_snapshot_copy_settings,
             # Migration-specific tools
             extract_cluster_config,
             migrate_cluster,
@@ -717,6 +931,8 @@ def create_agent():
             # Scheduled query tools
             list_scheduled_queries,
             migrate_scheduled_queries,
+            # Serverless configuration tools
+            configure_serverless_snapshot_copy,
             # Help system
             get_migration_help,
         ],

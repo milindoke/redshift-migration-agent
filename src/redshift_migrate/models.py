@@ -61,6 +61,8 @@ class ProvisionedClusterConfig(BaseModel):
     parameter_group_name: Optional[str] = None
     parameter_group_info: Optional[ParameterGroupInfo] = None
     maintenance_window: Optional[str] = None
+    maintenance_track: Optional[str] = None
+    snapshot_copy_config: Optional[Dict[str, Any]] = None
     tags: Dict[str, str] = Field(default_factory=dict)
     raw_config: Dict[str, Any] = Field(default_factory=dict)
 

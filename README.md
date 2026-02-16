@@ -20,6 +20,7 @@ This AI agent helps you migrate from AWS Redshift Provisioned clusters to Redshi
 - ✅ Migrating IAM roles, VPC settings, and security groups
 - ✅ Mapping parameter groups to Serverless equivalents
 - ✅ Migrating scheduled queries from EventBridge to Serverless
+- ✅ Carrying over maintenance track and cross-region snapshot copy settings
 - ✅ Providing conversational guidance throughout the process
 
 ## 🚀 Quick Deploy (3 Minutes)
@@ -104,6 +105,12 @@ Agent: [Guides through migration process]
 You: "Migrate scheduled queries from prod-db-1 to my-serverless-wg"
 Agent: [Migrates all scheduled queries to serverless workgroup]
 
+You: "Get snapshot copy settings for prod-db-1"
+Agent: [Shows cross-region snapshot copy configuration]
+
+You: "Configure snapshot copy for my-namespace to us-west-2 with 7 day retention"
+Agent: [Configures cross-region snapshot copy for serverless]
+
 You: "What's the status of my migration?"
 Agent: [Checks and reports status]
 ```
@@ -175,6 +182,13 @@ First 1M Lambda requests are free!
 - Automatic IAM role creation for query execution
 - Dry-run mode to preview changes
 
+### Maintenance and Snapshot Settings
+- Extract maintenance track and window from provisioned clusters
+- Get cross-region snapshot copy configuration
+- Configure snapshot copy for serverless namespaces
+- Preserve retention periods and KMS encryption settings
+- Note: Serverless uses automatic maintenance (no manual windows)
+
 ### Conversational Interface
 - Natural language queries
 - Step-by-step guidance
@@ -187,6 +201,7 @@ First 1M Lambda requests are free!
 - [Deployment Guide](docs/deployment/DEPLOY_NOW.md) - Deploy the agent
 - [Chat Guide](docs/guides/CHAT_GUIDE.md) - Complete chat documentation
 - [Scheduled Query Migration](docs/guides/SCHEDULED_QUERIES.md) - Migrate scheduled queries
+- [Maintenance & Snapshot Settings](docs/guides/MAINTENANCE_AND_SNAPSHOTS.md) - Migrate maintenance and snapshot copy
 - [Security Setup](docs/guides/SECURE_ACCESS.md) - IAM and access control
 - [Project Structure](PROJECT_STRUCTURE.md) - Navigate the codebase
 - [Migration Patterns](docs/QUICKSTART.md) - Common migration scenarios

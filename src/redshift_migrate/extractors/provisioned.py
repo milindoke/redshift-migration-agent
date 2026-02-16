@@ -47,6 +47,8 @@ class ProvisionedClusterExtractor:
             parameter_group_name=param_group_name,
             parameter_group_info=param_group_info,
             maintenance_window=cluster.get("PreferredMaintenanceWindow"),
+            maintenance_track=cluster.get("MaintenanceTrackName"),
+            snapshot_copy_config=self._extract_snapshot_copy_config(cluster),
             tags=self._extract_tags(cluster_identifier),
             raw_config=cluster,
         )
@@ -194,3 +196,25 @@ class ProvisionedClusterExtractor:
         except Exception as e:
             print(f"Warning: Could not extract scheduled queries: {e}")
             return []
+
+    def _extract_snapshot_copy_config(self, cluster: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Extract cross-region snapshot copy configuration."""
+        try:
+            snapshot_copy_status = cluster.get("ClusterSnapshotCopyStatus")
+            if not snapshot_copy_status:
+                return None
+            
+            config = {
+                "destination_region": snapshot_copy_status.get("DestinationRegion"),
+                "retention_period": snapshot_copy_status.get("RetentionPeriod"),
+                "manual_snapshot_retention_period": snapshot_copy_status.get("ManualSnapshotRetentionPeriod"),
+            }
+            
+            # Extract snapshot copy grant if present
+            if snapshot_copy_status.get("SnapshotCopyGrantName"):
+                config["snapshot_copy_grant_name"] = snapshot_copy_status.get("SnapshotCopyGrantName")
+            
+            return config
+        except Exception as e:
+            print(f"Warning: Could not extract snapshot copy config: {e}")
+            return None

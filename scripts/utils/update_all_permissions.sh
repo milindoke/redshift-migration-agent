@@ -91,7 +91,11 @@ cat > /tmp/comprehensive_policy.json << 'EOF'
         "redshift-serverless:DeleteSnapshot",
         "redshift-serverless:TagResource",
         "redshift-serverless:UntagResource",
-        "redshift-serverless:ListTagsForResource"
+        "redshift-serverless:ListTagsForResource",
+        "redshift-serverless:CreateSnapshotCopyConfiguration",
+        "redshift-serverless:UpdateSnapshotCopyConfiguration",
+        "redshift-serverless:DeleteSnapshotCopyConfiguration",
+        "redshift-serverless:ListSnapshotCopyConfigurations"
       ],
       "Resource": "*"
     },
