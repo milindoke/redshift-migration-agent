@@ -50,6 +50,7 @@ class ProvisionedClusterExtractor:
             maintenance_track=cluster.get("MaintenanceTrackName"),
             snapshot_copy_config=self._extract_snapshot_copy_config(cluster),
             usage_limits=self._extract_usage_limits(cluster_identifier),
+            wlm_queues=self._extract_wlm_queues(param_group_name),
             tags=self._extract_tags(cluster_identifier),
             raw_config=cluster,
         )
@@ -256,3 +257,47 @@ class ProvisionedClusterExtractor:
             print(f"Warning: Could not extract usage limits: {e}")
         
         return usage_limits
+
+    def _extract_wlm_queues(self, parameter_group_name: Optional[str]) -> List:
+        """Extract WLM queue configuration from parameter group."""
+        from ..models import WLMQueue
+        import json
+        
+        wlm_queues = []
+        
+        if not parameter_group_name:
+            return wlm_queues
+        
+        try:
+            # Get WLM configuration from parameter group
+            response = self.redshift.describe_cluster_parameters(
+                ParameterGroupName=parameter_group_name
+            )
+            
+            # Find wlm_json_configuration parameter
+            for param in response.get("Parameters", []):
+                if param.get("ParameterName") == "wlm_json_configuration":
+                    wlm_config_str = param.get("ParameterValue")
+                    if wlm_config_str:
+                        wlm_config = json.loads(wlm_config_str)
+                        
+                        # Extract queue configurations
+                        for queue in wlm_config:
+                            # Skip the default queue (usually last one with no name)
+                            if queue.get("name") or queue.get("query_group"):
+                                wlm_queues.append(
+                                    WLMQueue(
+                                        name=queue.get("name", queue.get("query_group", "unnamed")),
+                                        concurrency=queue.get("query_concurrency", 5),
+                                        memory_percent=queue.get("memory_percent_to_use"),
+                                        user_group=queue.get("user_group", []),
+                                        query_group=queue.get("query_group", []),
+                                        priority=queue.get("priority"),
+                                        timeout=queue.get("max_execution_time"),
+                                    )
+                                )
+                    break
+        except Exception as e:
+            print(f"Warning: Could not extract WLM configuration: {e}")
+        
+        return wlm_queues

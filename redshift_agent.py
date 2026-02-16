@@ -71,6 +71,256 @@ def run_aws_command(service: str, operation: str, parameters: dict = None, regio
 
 
 @tool
+def get_cluster_wlm_queues(cluster_id: str, region: str = None) -> str:
+    """Get WLM (Workload Management) queue configuration from a Redshift provisioned cluster.
+    
+    WLM queues control query execution by allocating resources to different workloads.
+    Multiple queues indicate different workload types that may benefit from separate
+    serverless workgroups.
+    
+    Args:
+        cluster_id: The provisioned cluster ID
+        region: AWS region (optional, uses default if not specified)
+    
+    Returns:
+        JSON with WLM queue configuration including names, concurrency, and memory allocation
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        redshift = boto3.client("redshift", region_name=region)
+        
+        # Get cluster details to find parameter group
+        response = redshift.describe_clusters(ClusterIdentifier=cluster_id)
+        clusters = response.get("Clusters", [])
+        
+        if not clusters:
+            return f"Cluster '{cluster_id}' not found"
+        
+        cluster = clusters[0]
+        param_groups = cluster.get("ClusterParameterGroups", [])
+        
+        if not param_groups:
+            return json.dumps({
+                "cluster_id": cluster_id,
+                "wlm_queues_count": 0,
+                "message": "No parameter group found for this cluster"
+            }, indent=2)
+        
+        param_group_name = param_groups[0].get("ParameterGroupName")
+        
+        # Get WLM configuration from parameter group
+        params_response = redshift.describe_cluster_parameters(
+            ParameterGroupName=param_group_name
+        )
+        
+        wlm_queues = []
+        
+        for param in params_response.get("Parameters", []):
+            if param.get("ParameterName") == "wlm_json_configuration":
+                wlm_config_str = param.get("ParameterValue")
+                if wlm_config_str:
+                    wlm_config = json.loads(wlm_config_str)
+                    
+                    for queue in wlm_config:
+                        # Skip the default queue (usually last one with no name)
+                        if queue.get("name") or queue.get("query_group"):
+                            wlm_queues.append({
+                                "name": queue.get("name", queue.get("query_group", ["unnamed"])[0] if isinstance(queue.get("query_group"), list) else queue.get("query_group", "unnamed")),
+                                "concurrency": queue.get("query_concurrency", 5),
+                                "memory_percent": queue.get("memory_percent_to_use"),
+                                "user_group": queue.get("user_group", []),
+                                "query_group": queue.get("query_group", []),
+                                "priority": queue.get("priority"),
+                                "timeout": queue.get("max_execution_time")
+                            })
+                break
+        
+        if not wlm_queues:
+            return json.dumps({
+                "cluster_id": cluster_id,
+                "parameter_group": param_group_name,
+                "wlm_queues_count": 0,
+                "message": "No custom WLM queues configured (using default queue only)"
+            }, indent=2)
+        
+        result = {
+            "cluster_id": cluster_id,
+            "parameter_group": param_group_name,
+            "wlm_queues_count": len(wlm_queues),
+            "wlm_queues": wlm_queues,
+            "migration_options": {
+                "single_workgroup": f"Migrate all queues to one workgroup: {cluster_id}",
+                "multiple_workgroups": f"Create {len(wlm_queues)} workgroups (one per queue): " + 
+                                      ", ".join([f"{cluster_id}-{q['name']}" for q in wlm_queues])
+            }
+        }
+        
+        return json.dumps(result, indent=2)
+        
+    except ClientError as e:
+        return f"AWS API Error: {e.response['Error']['Code']} - {e.response['Error']['Message']}"
+    except Exception as e:
+        return f"Error getting WLM queues: {str(e)}"
+
+
+@tool
+def create_multiple_workgroups_from_wlm(
+    cluster_id: str,
+    namespace_name: str,
+    region: str = None,
+    dry_run: bool = False
+) -> str:
+    """Create multiple serverless workgroups based on WLM queues from provisioned cluster.
+    
+    This creates one workgroup per WLM queue, using the naming convention:
+    {cluster-id}-{queue-name}
+    
+    All workgroups share the same namespace (data) but provide workload isolation.
+    
+    Args:
+        cluster_id: Source provisioned cluster ID
+        namespace_name: Shared namespace name for all workgroups
+        region: AWS region (optional, uses default if not specified)
+        dry_run: Preview workgroups without creating (default: False)
+    
+    Returns:
+        List of workgroups to be created with their configurations
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    try:
+        redshift = boto3.client("redshift", region_name=region)
+        redshift_serverless = boto3.client("redshift-serverless", region_name=region)
+        
+        # Get cluster details
+        response = redshift.describe_clusters(ClusterIdentifier=cluster_id)
+        clusters = response.get("Clusters", [])
+        
+        if not clusters:
+            return f"Cluster '{cluster_id}' not found"
+        
+        cluster = clusters[0]
+        param_groups = cluster.get("ClusterParameterGroups", [])
+        
+        if not param_groups:
+            return json.dumps({
+                "error": "No parameter group found for this cluster"
+            }, indent=2)
+        
+        param_group_name = param_groups[0].get("ParameterGroupName")
+        
+        # Get WLM configuration
+        params_response = redshift.describe_cluster_parameters(
+            ParameterGroupName=param_group_name
+        )
+        
+        wlm_queues = []
+        
+        for param in params_response.get("Parameters", []):
+            if param.get("ParameterName") == "wlm_json_configuration":
+                wlm_config_str = param.get("ParameterValue")
+                if wlm_config_str:
+                    wlm_config = json.loads(wlm_config_str)
+                    
+                    for queue in wlm_config:
+                        if queue.get("name") or queue.get("query_group"):
+                            queue_name = queue.get("name", queue.get("query_group", ["unnamed"])[0] if isinstance(queue.get("query_group"), list) else queue.get("query_group", "unnamed"))
+                            wlm_queues.append({
+                                "name": queue_name,
+                                "concurrency": queue.get("query_concurrency", 5),
+                                "memory_percent": queue.get("memory_percent_to_use")
+                            })
+                break
+        
+        if not wlm_queues:
+            return json.dumps({
+                "error": "No custom WLM queues found",
+                "message": "Cluster uses default queue only. Use single workgroup migration instead."
+            }, indent=2)
+        
+        # Get VPC configuration from cluster
+        vpc_security_groups = cluster.get("VpcSecurityGroups", [])
+        security_group_ids = [sg["VpcSecurityGroupId"] for sg in vpc_security_groups]
+        
+        subnet_ids = []
+        if "ClusterSubnetGroupName" in cluster:
+            subnet_group_name = cluster["ClusterSubnetGroupName"]
+            subnet_group = redshift.describe_cluster_subnet_groups(
+                ClusterSubnetGroupName=subnet_group_name
+            )
+            subnets = subnet_group["ClusterSubnetGroups"][0].get("Subnets", [])
+            subnet_ids = [subnet["SubnetIdentifier"] for subnet in subnets]
+        
+        # Plan workgroups
+        workgroups_plan = []
+        
+        for queue in wlm_queues:
+            workgroup_name = f"{cluster_id}-{queue['name']}"
+            
+            # Calculate max capacity based on queue concurrency and memory
+            # Higher concurrency = more RPUs needed
+            base_capacity = 128  # Base RPUs
+            concurrency_factor = queue['concurrency'] / 5  # Normalize to default of 5
+            max_capacity = int(base_capacity * concurrency_factor)
+            max_capacity = max(128, min(max_capacity, 512))  # Clamp between 128-512
+            
+            workgroup_config = {
+                "workgroup_name": workgroup_name,
+                "namespace_name": namespace_name,
+                "source_queue": queue['name'],
+                "max_capacity": max_capacity,
+                "concurrency": queue['concurrency'],
+                "subnet_ids": subnet_ids,
+                "security_group_ids": security_group_ids,
+                "status": "planned" if dry_run else "creating"
+            }
+            
+            workgroups_plan.append(workgroup_config)
+            
+            # Create workgroup if not dry run
+            if not dry_run:
+                try:
+                    redshift_serverless.create_workgroup(
+                        workgroupName=workgroup_name,
+                        namespaceName=namespace_name,
+                        subnetIds=subnet_ids,
+                        securityGroupIds=security_group_ids,
+                        publiclyAccessible=cluster.get("PubliclyAccessible", False),
+                        maxCapacity=max_capacity,
+                        pricePerformanceTarget={
+                            "level": 50,
+                            "status": "ENABLED"
+                        }
+                    )
+                    workgroup_config["status"] = "created"
+                except redshift_serverless.exceptions.ConflictException:
+                    workgroup_config["status"] = "already_exists"
+                except Exception as e:
+                    workgroup_config["status"] = "error"
+                    workgroup_config["error"] = str(e)
+        
+        result = {
+            "cluster_id": cluster_id,
+            "namespace_name": namespace_name,
+            "dry_run": dry_run,
+            "wlm_queues_count": len(wlm_queues),
+            "workgroups_created": len(workgroups_plan),
+            "workgroups": workgroups_plan,
+            "message": f"{'Planned' if dry_run else 'Created'} {len(workgroups_plan)} workgroups from WLM queues"
+        }
+        
+        return json.dumps(result, indent=2)
+        
+    except ClientError as e:
+        return f"AWS API Error: {e.response['Error']['Code']} - {e.response['Error']['Message']}"
+    except Exception as e:
+        return f"Error creating workgroups: {str(e)}"
+
+
+@tool
 def get_cluster_usage_limits(cluster_id: str, region: str = None) -> str:
     """Get usage limits from a Redshift provisioned cluster.
     
@@ -902,7 +1152,53 @@ def get_migration_help(topic: str = None) -> str:
     Returns:
         Help text for the specified topic
     """
-    if topic == "usage_limits":
+    if topic == "wlm_queues":
+        return """
+WLM Queue Migration:
+Handle multiple WLM queues when migrating to serverless.
+
+Available Tools:
+1. get_cluster_wlm_queues - Get WLM queue configuration
+2. create_multiple_workgroups_from_wlm - Create one workgroup per queue
+
+What are WLM Queues?
+- Workload Management (WLM) queues control query execution
+- Each queue has concurrency, memory, and priority settings
+- Multiple queues provide workload isolation
+
+Migration Options:
+
+Option 1: Single Workgroup
+- All workloads run in one workgroup
+- Simpler management
+- Lower cost (one workgroup)
+- Use when: Workloads don't need isolation
+
+Option 2: Multiple Workgroups (One per Queue)
+- Each queue becomes a separate workgroup
+- Workload isolation maintained
+- Independent scaling per workload
+- Naming: {cluster-id}-{queue-name}
+- Use when: Need workload separation
+
+Example workflow:
+1. Check queues: get_cluster_wlm_queues(cluster_id="my-cluster")
+2. If multiple queues found, ask user for preference
+3. Single workgroup: migrate_cluster(cluster_id="my-cluster", ...)
+4. Multiple workgroups: create_multiple_workgroups_from_wlm(
+                          cluster_id="my-cluster",
+                          namespace_name="my-namespace",
+                          dry_run=True)
+
+Workgroup Sizing:
+- Base capacity: 128 RPUs
+- Adjusted by queue concurrency
+- Higher concurrency = more RPUs
+- Range: 128-512 RPUs per workgroup
+
+Note: All workgroups share the same namespace (data).
+"""
+    elif topic == "usage_limits":
         return """
 Usage Limits Migration:
 Migrate usage limits from provisioned cluster to serverless workgroup.
@@ -1018,6 +1314,7 @@ Extracts:
 - Maintenance track and window
 - Cross-region snapshot copy settings
 - Usage limits (spectrum, concurrency-scaling, datasharing)
+- WLM queues (workload management configuration)
 - Tags and logging configuration
 """
     elif topic == "apply":
@@ -1070,6 +1367,8 @@ Commands:
 9. get_cluster_usage_limits - Get usage limits from provisioned cluster
 10. create_serverless_usage_limit - Create usage limit for serverless workgroup
 11. migrate_usage_limits_to_serverless - Migrate usage limits with recommendations
+12. get_cluster_wlm_queues - Get WLM queue configuration
+13. create_multiple_workgroups_from_wlm - Create multiple workgroups from WLM queues
 
 Key Concepts:
 - Namespace: Contains database, users, and data
@@ -1080,8 +1379,9 @@ Key Concepts:
 - Maintenance: Serverless uses automatic maintenance (no manual windows)
 - Snapshot Copy: Can be configured for cross-region backup
 - Usage Limits: Control resource consumption (different types for provisioned vs serverless)
+- WLM Queues: Multiple queues can become multiple workgroups for workload isolation
 
-Use get_migration_help with topic='extract', 'apply', 'migrate', 'scheduled_queries', 'maintenance_snapshot', or 'usage_limits' for detailed help.
+Use get_migration_help with topic='extract', 'apply', 'migrate', 'scheduled_queries', 'maintenance_snapshot', 'usage_limits', or 'wlm_queues' for detailed help.
 """
 
 
@@ -1109,6 +1409,8 @@ Available Tools:
 - get_cluster_usage_limits: Get usage limits from provisioned cluster
 - create_serverless_usage_limit: Create usage limit for serverless workgroup
 - migrate_usage_limits_to_serverless: Migrate usage limits with recommendations
+- get_cluster_wlm_queues: Get WLM queue configuration from provisioned cluster
+- create_multiple_workgroups_from_wlm: Create multiple workgroups (one per WLM queue)
 - get_migration_help: Context-aware help system
 
 When users ask about AWS resources (namespaces, workgroups, snapshots, etc.):
@@ -1156,6 +1458,14 @@ Key Migration Patterns:
    - Migrate limits: migrate_usage_limits_to_serverless(cluster_id, workgroup_name, region, dry_run)
    - Note: Provisioned and serverless use different limit types (spectrum/concurrency-scaling vs RPU-hours)
 
+7. WLM QUEUES AND MULTI-WORKGROUP MIGRATION:
+   - Get WLM queues: get_cluster_wlm_queues(cluster_id, region)
+   - Create multiple workgroups: create_multiple_workgroups_from_wlm(cluster_id, namespace_name, region, dry_run)
+   - IMPORTANT: Always check WLM queues before migration
+   - If multiple queues exist, ASK USER: single workgroup or multiple workgroups?
+   - Multiple workgroups provide workload isolation (one per queue)
+   - Naming convention: {cluster-id}-{queue-name}
+
 Always ask clarifying questions:
 - What's the cluster ID?
 - What AWS region?
@@ -1164,6 +1474,16 @@ Always ask clarifying questions:
 - Do they want to migrate scheduled queries?
 - Do they have cross-region snapshot copy enabled?
 - Do they have usage limits configured?
+- CRITICAL: Do they have multiple WLM queues?
+
+When detecting multiple WLM queues:
+- ALWAYS check WLM configuration first: get_cluster_wlm_queues(cluster_id)
+- If multiple queues found, STOP and ASK USER:
+  Option 1: Single workgroup (all workloads together)
+  Option 2: Multiple workgroups (one per queue for workload isolation)
+- Explain benefits of each approach
+- If user chooses multiple workgroups, use: create_multiple_workgroups_from_wlm()
+- Workgroup names will be: {cluster-id}-{queue-name}
 
 When migrating scheduled queries:
 - First list them to show what will be migrated
@@ -1213,10 +1533,12 @@ def create_agent():
             get_cluster_maintenance_settings,
             get_cluster_snapshot_copy_settings,
             get_cluster_usage_limits,
+            get_cluster_wlm_queues,
             # Migration-specific tools
             extract_cluster_config,
             migrate_cluster,
             apply_configuration,
+            create_multiple_workgroups_from_wlm,
             # Scheduled query tools
             list_scheduled_queries,
             migrate_scheduled_queries,

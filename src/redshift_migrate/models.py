@@ -61,6 +61,17 @@ class UsageLimit(BaseModel):
     tags: Dict[str, str] = Field(default_factory=dict)
 
 
+class WLMQueue(BaseModel):
+    """WLM queue configuration."""
+    name: str
+    concurrency: int
+    memory_percent: Optional[int] = None
+    user_group: Optional[List[str]] = None
+    query_group: Optional[List[str]] = None
+    priority: Optional[str] = None
+    timeout: Optional[int] = None
+
+
 class ProvisionedClusterConfig(BaseModel):
     """Complete provisioned cluster configuration."""
     cluster_identifier: str
@@ -75,6 +86,7 @@ class ProvisionedClusterConfig(BaseModel):
     maintenance_track: Optional[str] = None
     snapshot_copy_config: Optional[Dict[str, Any]] = None
     usage_limits: List[UsageLimit] = Field(default_factory=list)
+    wlm_queues: List[WLMQueue] = Field(default_factory=list)
     tags: Dict[str, str] = Field(default_factory=dict)
     raw_config: Dict[str, Any] = Field(default_factory=dict)
 
