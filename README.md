@@ -23,6 +23,7 @@ This AI agent helps you migrate from AWS Redshift Provisioned clusters to Redshi
 - ✅ Carrying over maintenance track and cross-region snapshot copy settings
 - ✅ Migrating usage limits with intelligent recommendations for Serverless
 - ✅ Detecting multiple WLM queues and offering single or multi-workgroup migration
+- ✅ **Persistent memory across hours/days** - Agent remembers your migrations
 - ✅ Providing conversational guidance throughout the process
 
 ## 🚀 Quick Deploy (3 Minutes)
@@ -79,15 +80,33 @@ aws iam add-user-to-group \
   --user-name YOUR_USERNAME \
   --group-name RedshiftMigrationAgentUsers
 
-# Use the agent
+# Use the agent (stateless - no memory)
 aws lambda invoke \
   --function-name redshift-migration-agent \
   --cli-binary-format raw-in-base64-out \
   --payload '{"message":"List my Redshift clusters in us-east-2"}' \
   response.json
 
-cat response.json
+# Use with memory (remembers across calls)
+aws lambda invoke \
+  --function-name redshift-migration-agent \
+  --payload '{
+    "message":"Start migration for prod-cluster",
+    "session_id":"prod-migration-jan2024"
+  }' \
+  response.json
+
+# Continue later (agent remembers everything)
+aws lambda invoke \
+  --function-name redshift-migration-agent \
+  --payload '{
+    "message":"What was the status?",
+    "session_id":"prod-migration-jan2024"
+  }' \
+  response.json
 ```
+
+See [Memory Guide](docs/guides/MEMORY.md) for persistent conversation setup.
 
 ## 🎬 Example Conversations
 

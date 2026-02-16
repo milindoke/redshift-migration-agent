@@ -50,6 +50,18 @@ Resources:
             Resource: '*'
           - Effect: Allow
             Action:
+              - bedrock:CreateMemory
+              - bedrock:GetMemory
+              - bedrock:ListMemories
+              - bedrock:UpdateMemory
+              - bedrock:DeleteMemory
+              - bedrock:CreateMemorySession
+              - bedrock:GetMemorySession
+              - bedrock:DeleteMemorySession
+              - bedrock:InvokeMemory
+            Resource: '*'
+          - Effect: Allow
+            Action:
               - redshift:DescribeClusters
               - redshift:DescribeClusterParameters
               - redshift:DescribeClusterParameterGroups

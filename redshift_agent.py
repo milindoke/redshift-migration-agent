@@ -4,6 +4,11 @@ Redshift Migration Strand Agent
 
 A conversational AI agent that helps users migrate from AWS Redshift Provisioned 
 clusters to Redshift Serverless using the redshift-migrate CLI tool.
+
+Features:
+- Persistent memory across sessions using AWS Bedrock AgentCore Memory
+- Long-running migration tracking
+- User preference learning
 """
 
 import os
@@ -11,6 +16,10 @@ import subprocess
 import json
 from strands import Agent, tool
 from strands.models.bedrock import BedrockModel
+from bedrock_agentcore.memory import MemoryClient
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+from datetime import datetime
 
 
 @tool
@@ -1514,14 +1523,83 @@ Important Notes:
 """
 
 
-def create_agent():
-    """Create and return the Redshift Migration agent."""
+def create_agent(session_id: str = None, actor_id: str = None, region: str = "us-east-2"):
+    """Create and return the Redshift Migration agent with optional persistent memory.
+    
+    Args:
+        session_id: Unique session identifier for conversation continuity (optional)
+        actor_id: User/actor identifier for personalization (optional)
+        region: AWS region for memory storage (default: us-east-2)
+    
+    Returns:
+        Agent instance with or without memory based on parameters
+    """
     # Use Claude Sonnet 4.5 via inference profile
     model = BedrockModel(
         model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
         temperature=0.3,  # Lower temperature for factual, helpful responses
         max_tokens=4096,
     )
+    
+    # Configure memory if session_id is provided
+    session_manager = None
+    if session_id:
+        try:
+            # Get or create memory
+            memory_id = os.environ.get('AGENTCORE_MEMORY_ID')
+            
+            if not memory_id:
+                # Create memory on first use
+                client = MemoryClient(region_name=region)
+                memory = client.create_memory(
+                    name="RedshiftMigrationMemory",
+                    description="Persistent memory for Redshift migration conversations and progress tracking",
+                    strategies=[
+                        {
+                            "summaryMemoryStrategy": {
+                                "name": "MigrationSummarizer",
+                                "namespaces": ["/summaries/{actorId}/{sessionId}/"]
+                            }
+                        },
+                        {
+                            "userPreferenceMemoryStrategy": {
+                                "name": "UserPreferences",
+                                "namespaces": ["/preferences/{actorId}/"]
+                            }
+                        },
+                        {
+                            "semanticMemoryStrategy": {
+                                "name": "MigrationFacts",
+                                "namespaces": ["/facts/{actorId}/"]
+                            }
+                        }
+                    ]
+                )
+                memory_id = memory.get('id')
+                print(f"Created new memory: {memory_id}")
+                print(f"Set AGENTCORE_MEMORY_ID={memory_id} in your environment")
+            
+            # Use default actor_id if not provided
+            if not actor_id:
+                actor_id = "default_user"
+            
+            # Configure memory
+            agentcore_memory_config = AgentCoreMemoryConfig(
+                memory_id=memory_id,
+                session_id=session_id,
+                actor_id=actor_id
+            )
+            
+            # Create session manager
+            session_manager = AgentCoreMemorySessionManager(
+                agentcore_memory_config=agentcore_memory_config,
+                region_name=region
+            )
+            
+        except Exception as e:
+            print(f"Warning: Could not initialize memory: {e}")
+            print("Continuing without persistent memory...")
+            session_manager = None
     
     agent = Agent(
         model=model,
@@ -1550,6 +1628,7 @@ def create_agent():
             get_migration_help,
         ],
         system_prompt=SYSTEM_PROMPT,
+        session_manager=session_manager,
     )
     
     return agent
