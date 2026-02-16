@@ -53,9 +53,8 @@ This is the initial public release of the Redshift Migration Agent!
 ## 📦 What's Included
 
 ### Core Components
-- `redshift_agent.py` - Main AI agent with 6 tools
+- `redshift_agent.py` - Main AI agent with tools
 - `lambda_handler.py` - AWS Lambda handler
-- `api_server.py` - FastAPI REST API server
 - `src/redshift_migrate/` - Migration library
 
 ### Tools Available
@@ -68,13 +67,12 @@ This is the initial public release of the Redshift Migration Agent!
 
 ### Documentation
 - `README.md` - Main documentation
-- `DEPLOY.md` - Deployment guide
-- `SECURE_ACCESS.md` - Security setup
+- `docs/deployment/DEPLOY_NOW.md` - Deployment guide
+- `docs/guides/SECURE_ACCESS.md` - Security setup
 - `CONTRIBUTING.md` - Contribution guidelines
 - `docs/QUICKSTART.md` - Quick start guide
-- `docs/PARAMETER_GROUPS.md` - Parameter mapping details
-- `docs/SCHEDULED_QUERIES.md` - Scheduled query migration
-- `docs/WORKGROUP_CREATION.md` - Workgroup creation guide
+- `docs/guides/SCHEDULED_QUERIES.md` - Scheduled query migration
+- `docs/guides/MEMORY.md` - Persistent memory guide
 
 ### Examples
 - `examples/simple_migration.py` - Basic migration
@@ -84,7 +82,8 @@ This is the initial public release of the Redshift Migration Agent!
 - `examples/secure_client.py` - Secure Lambda invocation
 
 ### Deployment Scripts
-- `quick_deploy.sh` - One-command deployment
+- `deploy` - Main deployment script
+- `scripts/deployment/quick_deploy.sh` - SAM deployment
 - `template.yaml` - SAM/CloudFormation template
 - `aws_deploy/deploy-to-lambda.sh` - Lambda deployment
 - `aws_deploy/secure-access-setup.sh` - Security setup
@@ -99,7 +98,7 @@ git clone https://github.com/milindoke/redshift-migration-agent.git
 cd redshift-migration-agent
 
 # Quick deploy
-./quick_deploy.sh
+./deploy
 ```
 
 ### Use the Agent

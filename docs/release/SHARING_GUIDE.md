@@ -63,31 +63,26 @@ curl -X POST http://your-server:8000/chat \
 
 Your agent deployment includes:
 
-1. **redshift_agent.py** - Main agent (interactive CLI)
-2. **api_server.py** - REST API server
-3. **Dockerfile** - Container image
-4. **docker-compose.yml** - Easy deployment
-5. **quick_deploy.sh** - One-command deployment
-6. **DEPLOYMENT_OPTIONS.md** - Full deployment guide
+1. **redshift_agent.py** - Main agent with AI tools
+2. **lambda_handler.py** - AWS Lambda handler
+3. **deploy** - One-command deployment script
+4. **template.yaml** - SAM/CloudFormation template
+5. **Complete documentation** - Guides and examples
 
 ## Quick Commands
 
 ```bash
-# Local deployment
-./deploy_agent.sh
-source venv/bin/activate
-python redshift_agent.py
+# Deploy to AWS Lambda
+./deploy
 
-# API server
-python api_server.py
-# Visit http://localhost:8000/docs
+# Chat with agent locally
+./chat
 
-# Docker
-docker-compose up -d
-# Visit http://localhost:8000
-
-# Test API
-python examples/api_client_example.py
+# Test Lambda function
+aws lambda invoke \
+  --function-name redshift-migration-agent \
+  --payload '{"message":"List clusters"}' \
+  response.json
 ```
 
 ## Security Notes

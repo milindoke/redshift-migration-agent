@@ -43,7 +43,7 @@ cd redshift-migration-agent
 
 ```bash
 # Using SAM CLI
-sam build --use-container
+sam build
 sam deploy --guided
 ```
 
