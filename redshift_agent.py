@@ -16,6 +16,7 @@ import subprocess
 import json
 from strands import Agent, tool
 from strands.models.bedrock import BedrockModel
+from strands.agent.conversation_manager import SlidingWindowConversationManager
 from bedrock_agentcore.memory import MemoryClient
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
 from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
@@ -1627,6 +1628,15 @@ def create_agent(session_id: str = None, actor_id: str = None, region: str = "us
         print("Continuing without persistent memory...")
         session_manager = None
     
+    # Configure sliding window conversation manager to prevent context overflow
+    # With tool-heavy conversations, we need a smaller window to avoid accumulating
+    # too many tool use/result blocks that exceed Bedrock's limits
+    # Using a very small window (10 messages) to ensure toolUse/toolResult pairs stay balanced
+    conversation_manager = SlidingWindowConversationManager(
+        window_size=10,  # Keep only last 10 messages (very conservative for tool-heavy workflows)
+        should_truncate_results=True  # Truncate large tool results
+    )
+    
     agent = Agent(
         model=model,
         tools=[
@@ -1655,6 +1665,7 @@ def create_agent(session_id: str = None, actor_id: str = None, region: str = "us
         ],
         system_prompt=SYSTEM_PROMPT,
         session_manager=session_manager,
+        conversation_manager=conversation_manager,
     )
     
     return agent

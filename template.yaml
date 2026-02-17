@@ -61,6 +61,7 @@ Resources:
               - redshift:DescribeEventSubscriptions
               - redshift:DescribeLoggingStatus
               - redshift:DescribeTags
+              - redshift:DescribeUsageLimits
               - redshift:CreateClusterSnapshot
               - redshift:ModifyCluster
             Resource: '*'
@@ -75,18 +76,32 @@ Resources:
               - redshift-serverless:UpdateNamespace
               - redshift-serverless:UpdateWorkgroup
               - redshift-serverless:RestoreFromSnapshot
+              - redshift-serverless:CreateUsageLimit
+              - redshift-serverless:GetUsageLimit
+              - redshift-serverless:ListUsageLimits
+              - redshift-serverless:CreateSnapshotCopyConfiguration
+              - redshift-serverless:GetSnapshotCopyConfiguration
+              - redshift-serverless:ListSnapshotCopyConfigurations
+              - redshift-serverless:DeleteNamespace
+              - redshift-serverless:DeleteWorkgroup
             Resource: '*'
           - Effect: Allow
             Action:
-              - ec2:DescribeVpcs
-              - ec2:DescribeSubnets
+              - ec2:DescribeAccountAttributes
+              - ec2:DescribeAddresses
+              - ec2:DescribeAvailabilityZones
               - ec2:DescribeSecurityGroups
+              - ec2:DescribeSubnets
+              - ec2:DescribeVpcs
+              - ec2:DescribeInternetGateways
             Resource: '*'
           - Effect: Allow
             Action:
               - iam:ListRoles
               - iam:GetRole
               - iam:PassRole
+              - iam:CreateRole
+              - iam:PutRolePolicy
             Resource: '*'
           - Effect: Allow
             Action:
@@ -100,6 +115,7 @@ Resources:
               - scheduler:GetSchedule
               - scheduler:ListSchedules
               - scheduler:CreateSchedule
+              - scheduler:ListScheduleGroups
             Resource: '*'
 
   # Lambda Execution Role

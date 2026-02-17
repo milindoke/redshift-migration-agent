@@ -116,6 +116,30 @@ aws lambda invoke \
 
 Memory is enabled by default - the agent automatically remembers conversations within a session.
 
+### 🧠 How Memory & Conversation Management Works
+
+The agent uses two complementary systems to maintain context:
+
+1. **Long-term Memory (AgentCore Memory)**
+   - Stores summaries, facts, and preferences across sessions
+   - Persists for hours/days - come back anytime with the same `session_id`
+   - Automatically extracts key information from conversations
+   - Enables the agent to remember migration progress and decisions
+
+2. **Sliding Window (Recent Messages)**
+   - Keeps the last 10 messages in active context
+   - Prevents context overflow in tool-heavy conversations
+   - Automatically truncates large tool results
+   - Very conservative window size to maintain toolUse/toolResult balance
+
+This dual approach means:
+- ✅ Agent remembers important details across sessions
+- ✅ Tool-heavy conversations work smoothly
+- ✅ No manual intervention needed
+- ✅ Context stays relevant and focused
+
+**Note:** In extremely long conversations with many tool calls (30+ messages), you may need to start a new session. The chat script will automatically detect this and prompt you to start fresh. Don't worry - important information is preserved in long-term memory!
+
 ## 🎬 Example Conversations
 
 ```

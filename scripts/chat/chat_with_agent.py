@@ -154,10 +154,11 @@ def main():
             print('\r' + ' ' * 50 + '\r', end='', flush=True)
             
             if error:
-                # Check if it's a conversation history error
-                if 'Conversation history' in error or 'too long' in error:
-                    print(f"{Colors.YELLOW}⚠️  Conversation history has become too long.{Colors.END}")
-                    print(f"{Colors.YELLOW}   Starting a new session...{Colors.END}\n")
+                # Check if it's a conversation history imbalance error
+                if 'imbalanced' in error.lower() or 'toolresult blocks' in error.lower():
+                    print(f"{Colors.YELLOW}⚠️  Conversation history has become imbalanced.{Colors.END}")
+                    print(f"{Colors.YELLOW}   This happens in very long tool-heavy conversations.{Colors.END}\n")
+                    print(f"{Colors.BLUE}Starting a new session...{Colors.END}\n")
                     # Start a new session
                     session_id = f"chat-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
                     print_banner(session_id)
