@@ -124,18 +124,36 @@ sam package \
 
 ## Post-Deployment Setup
 
-### 1. Add Users to Authorized Group
+### 1. Grant Lambda Invoke Permission
+
+Grant users permission to invoke the Lambda function:
 
 ```bash
-# Add yourself
-aws iam add-user-to-group \
-  --user-name YOUR_USERNAME \
-  --group-name RedshiftMigrationAgentUsers
+# Create policy document
+cat > lambda-invoke-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:*:*:function:redshift-migration-agent"
+    }
+  ]
+}
+EOF
 
-# Add other users
-aws iam add-user-to-group \
+# Attach to your user
+aws iam put-user-policy \
+  --user-name YOUR_USERNAME \
+  --policy-name RedshiftAgentInvoke \
+  --policy-document file://lambda-invoke-policy.json
+
+# Attach to other users
+aws iam put-user-policy \
   --user-name ANOTHER_USER \
-  --group-name RedshiftMigrationAgentUsers
+  --policy-name RedshiftAgentInvoke \
+  --policy-document file://lambda-invoke-policy.json
 ```
 
 ### 2. Test the Agent
@@ -196,17 +214,17 @@ sam deploy --region us-west-2
 aws lambda get-function --function-name redshift-migration-agent
 ```
 
-### Check IAM Resources
+### Check Lambda Function
 
 ```bash
-# List group members
-aws iam get-group --group-name RedshiftMigrationAgentUsers
+# Get function details
+aws lambda get-function --function-name redshift-migration-agent
 
-# Check policy
-aws iam get-policy --policy-arn $(aws cloudformation describe-stacks \
-  --stack-name redshift-migration-agent \
-  --query 'Stacks[0].Outputs[?OutputKey==`InvokePolicyArn`].OutputValue' \
-  --output text)
+# List function configuration
+aws lambda get-function-configuration --function-name redshift-migration-agent
+
+# Check who can invoke (list policies with lambda:InvokeFunction)
+aws iam list-policies --scope Local --query 'Policies[?contains(PolicyName, `Redshift`)]'
 ```
 
 ### View Logs

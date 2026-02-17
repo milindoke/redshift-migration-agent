@@ -190,10 +190,24 @@ aws configure
 
 ### "Permission denied"
 ```bash
-# Add yourself to authorized group
-aws iam add-user-to-group \
+# Grant Lambda invoke permission to your IAM user
+cat > lambda-invoke-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:*:*:function:redshift-migration-agent"
+    }
+  ]
+}
+EOF
+
+aws iam put-user-policy \
   --user-name YOUR_USERNAME \
-  --group-name RedshiftMigrationAgentUsers
+  --policy-name RedshiftAgentInvoke \
+  --policy-document file://lambda-invoke-policy.json
 ```
 
 ### "Module not found"

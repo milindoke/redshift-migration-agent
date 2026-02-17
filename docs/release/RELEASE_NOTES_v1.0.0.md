@@ -104,11 +104,6 @@ cd redshift-migration-agent
 ### Use the Agent
 
 ```bash
-# Add yourself to authorized users
-aws iam add-user-to-group \
-  --user-name YOUR_USERNAME \
-  --group-name RedshiftMigrationAgentUsers
-
 # Invoke the agent
 aws lambda invoke \
   --function-name redshift-migration-agent \
@@ -117,6 +112,12 @@ aws lambda invoke \
   response.json
 
 cat response.json
+
+# Use with persistent memory
+aws lambda invoke \
+  --function-name redshift-migration-agent \
+  --payload '{"message":"Start migration","session_id":"my-migration"}' \
+  response.json
 ```
 
 ## 📋 Requirements
