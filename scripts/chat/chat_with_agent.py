@@ -19,26 +19,31 @@ class Colors:
     BOLD = '\033[1m'
     END = '\033[0m'
 
-def print_banner():
+def print_banner(session_id):
     """Print welcome banner"""
     print(f"\n{Colors.BOLD}{Colors.BLUE}{'='*70}")
     print("🚀 Redshift Migration Agent - Interactive Chat")
     print(f"{'='*70}{Colors.END}\n")
     print(f"{Colors.GREEN}Type your questions naturally. The agent will help you migrate your")
     print(f"Redshift clusters to Serverless.{Colors.END}\n")
+    print(f"{Colors.BLUE}💾 Memory enabled - Agent remembers this conversation{Colors.END}")
+    print(f"{Colors.BLUE}📋 Session ID: {session_id}{Colors.END}\n")
     print(f"{Colors.YELLOW}Commands:{Colors.END}")
     print("  • Type 'exit' or 'quit' to end the conversation")
     print("  • Type 'clear' to clear conversation history")
     print("  • Type 'help' for migration guidance")
     print(f"\n{Colors.BLUE}{'='*70}{Colors.END}\n")
 
-def invoke_agent(lambda_client, message, region='us-east-2'):
+def invoke_agent(lambda_client, message, session_id, region='us-east-2'):
     """Invoke the Lambda agent and return response"""
     try:
         response = lambda_client.invoke(
             FunctionName='redshift-migration-agent',
             InvocationType='RequestResponse',
-            Payload=json.dumps({'message': message})
+            Payload=json.dumps({
+                'message': message,
+                'session_id': session_id
+            })
         )
         
         # Parse response
@@ -94,8 +99,11 @@ def main():
         print("  3. The function 'redshift-migration-agent' exists in us-east-2")
         sys.exit(1)
     
+    # Create a session ID for this chat session
+    session_id = f"chat-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    
     # Print banner
-    print_banner()
+    print_banner(session_id)
     
     # Conversation loop
     conversation_count = 0
@@ -111,13 +119,17 @@ def main():
             # Handle commands
             if user_input.lower() in ['exit', 'quit', 'bye']:
                 print(f"\n{Colors.GREEN}👋 Thanks for using Redshift Migration Agent!{Colors.END}")
+                print(f"{Colors.BLUE}💾 Your conversation is saved in session: {session_id}{Colors.END}")
                 print(f"{Colors.BLUE}Happy migrating! 🚀{Colors.END}\n")
                 break
             
             if user_input.lower() == 'clear':
+                # Start a new session
+                session_id = f"chat-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
                 print("\n" * 50)  # Clear screen
-                print_banner()
+                print_banner(session_id)
                 conversation_count = 0
+                print(f"{Colors.YELLOW}🔄 Started new conversation session{Colors.END}\n")
                 continue
             
             if user_input.lower() == 'help':
@@ -126,8 +138,8 @@ def main():
             # Show thinking indicator
             print(f"\n{Colors.YELLOW}🤔 Agent is thinking...{Colors.END}", end='', flush=True)
             
-            # Invoke agent
-            response, error = invoke_agent(lambda_client, user_input)
+            # Invoke agent with session_id
+            response, error = invoke_agent(lambda_client, user_input, session_id)
             
             # Clear thinking indicator
             print('\r' + ' ' * 50 + '\r', end='', flush=True)
@@ -145,6 +157,7 @@ def main():
             
         except KeyboardInterrupt:
             print(f"\n\n{Colors.YELLOW}Interrupted by user{Colors.END}")
+            print(f"{Colors.BLUE}💾 Your conversation is saved in session: {session_id}{Colors.END}")
             print(f"{Colors.GREEN}👋 Goodbye!{Colors.END}\n")
             break
         except Exception as e:
