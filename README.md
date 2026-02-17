@@ -75,7 +75,7 @@ See [Chat Guide](docs/guides/START_CHATTING.md) for more.
 ### Via AWS CLI
 
 ```bash
-# Use the agent (stateless - no memory)
+# Simple usage - memory enabled automatically
 aws lambda invoke \
   --function-name redshift-migration-agent \
   --cli-binary-format raw-in-base64-out \
@@ -84,7 +84,7 @@ aws lambda invoke \
 
 cat response.json
 
-# Use with memory (remembers across calls)
+# Use with custom session_id for long-running migrations
 aws lambda invoke \
   --function-name redshift-migration-agent \
   --payload '{
@@ -93,7 +93,7 @@ aws lambda invoke \
   }' \
   response.json
 
-# Continue later (agent remembers everything)
+# Continue later - agent remembers everything from the same session
 aws lambda invoke \
   --function-name redshift-migration-agent \
   --payload '{
@@ -103,7 +103,7 @@ aws lambda invoke \
   response.json
 ```
 
-See [Memory Guide](docs/guides/MEMORY.md) for persistent conversation setup.
+Memory is enabled by default - the agent automatically remembers conversations within a session.
 
 ## 🎬 Example Conversations
 

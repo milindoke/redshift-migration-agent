@@ -1524,15 +1524,15 @@ Important Notes:
 
 
 def create_agent(session_id: str = None, actor_id: str = None, region: str = "us-east-2"):
-    """Create and return the Redshift Migration agent with optional persistent memory.
+    """Create and return the Redshift Migration agent with persistent memory by default.
     
     Args:
-        session_id: Unique session identifier for conversation continuity (optional)
+        session_id: Unique session identifier for conversation continuity (auto-generated if not provided)
         actor_id: User/actor identifier for personalization (optional)
         region: AWS region for memory storage (default: us-east-2)
     
     Returns:
-        Agent instance with or without memory based on parameters
+        Agent instance with memory enabled
     """
     # Use Claude Sonnet 4.5 via inference profile
     model = BedrockModel(
@@ -1541,43 +1541,91 @@ def create_agent(session_id: str = None, actor_id: str = None, region: str = "us
         max_tokens=4096,
     )
     
-    # Configure memory if session_id is provided AND memory is set up
+    # Auto-generate session_id if not provided
+    if not session_id:
+        session_id = f"auto-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    
+    # Configure memory (always enabled)
     session_manager = None
-    if session_id:
+    try:
+        # Get or create memory ID
         memory_id = os.environ.get('AGENTCORE_MEMORY_ID')
         
-        if memory_id:
-            # Memory is configured, use it
+        if not memory_id:
+            # Try to get existing memory or create new one
             try:
-                if not actor_id:
-                    actor_id = "default_user"
+                client = MemoryClient(region_name=region)
                 
-                # Configure memory
-                agentcore_memory_config = AgentCoreMemoryConfig(
-                    memory_id=memory_id,
-                    session_id=session_id,
-                    actor_id=actor_id
-                )
+                # Try to find existing memory first
+                try:
+                    memories = client.list_memories()
+                    for mem in memories.get('memories', []):
+                        if mem.get('name') == 'RedshiftMigrationMemory':
+                            memory_id = mem.get('id')
+                            print(f"✅ Found existing memory: {memory_id}")
+                            break
+                except:
+                    pass
                 
-                # Create session manager
-                session_manager = AgentCoreMemorySessionManager(
-                    agentcore_memory_config=agentcore_memory_config,
-                    region_name=region
-                )
-                
-                print(f"✅ Memory enabled: session_id={session_id}, actor_id={actor_id}")
-                
+                # Create new memory if not found
+                if not memory_id:
+                    print("🧠 Creating persistent memory for agent...")
+                    memory = client.create_memory(
+                        name="RedshiftMigrationMemory",
+                        description="Persistent memory for Redshift migration conversations and progress tracking",
+                        strategies=[
+                            {
+                                "summaryMemoryStrategy": {
+                                    "name": "MigrationSummarizer",
+                                    "namespaces": ["/summaries/{actorId}/{sessionId}/"]
+                                }
+                            },
+                            {
+                                "userPreferenceMemoryStrategy": {
+                                    "name": "UserPreferences",
+                                    "namespaces": ["/preferences/{actorId}/"]
+                                }
+                            },
+                            {
+                                "semanticMemoryStrategy": {
+                                    "name": "MigrationFacts",
+                                    "namespaces": ["/facts/{actorId}/"]
+                                }
+                            }
+                        ]
+                    )
+                    memory_id = memory.get('id')
+                    print(f"✅ Memory created: {memory_id}")
+                    print(f"💡 Tip: Set AGENTCORE_MEMORY_ID={memory_id} to skip this step next time")
             except Exception as e:
-                print(f"⚠️  Memory initialization failed: {e}")
+                print(f"⚠️  Could not create memory: {e}")
                 print("Continuing without persistent memory...")
-                session_manager = None
-        else:
-            # session_id provided but memory not configured
-            print(f"ℹ️  session_id provided but AGENTCORE_MEMORY_ID not set")
-            print(f"   To enable persistent memory:")
-            print(f"   1. Run: python scripts/setup_memory.py --region {region}")
-            print(f"   2. Set the AGENTCORE_MEMORY_ID environment variable")
-            print(f"   Continuing without persistent memory for now...")
+                memory_id = None
+        
+        if memory_id:
+            # Use default actor_id if not provided
+            if not actor_id:
+                actor_id = "default_user"
+            
+            # Configure memory
+            agentcore_memory_config = AgentCoreMemoryConfig(
+                memory_id=memory_id,
+                session_id=session_id,
+                actor_id=actor_id
+            )
+            
+            # Create session manager
+            session_manager = AgentCoreMemorySessionManager(
+                agentcore_memory_config=agentcore_memory_config,
+                region_name=region
+            )
+            
+            print(f"✅ Memory enabled: session_id={session_id}, actor_id={actor_id}")
+            
+    except Exception as e:
+        print(f"⚠️  Memory initialization failed: {e}")
+        print("Continuing without persistent memory...")
+        session_manager = None
     
     agent = Agent(
         model=model,

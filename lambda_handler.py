@@ -38,7 +38,7 @@ def lambda_handler(event, context):
     Or direct invocation:
     {
         "message": "your message here",
-        "session_id": "optional-session-id",
+        "session_id": "optional-session-id",  # Auto-generated if not provided
         "actor_id": "optional-user-id"
     }
     """
@@ -58,6 +58,13 @@ def lambda_handler(event, context):
         actor_id = body.get('actor_id')
         region = body.get('region', os.environ.get('AWS_REGION', 'us-east-2'))
         
+        # Auto-generate session_id if not provided (use request ID for uniqueness)
+        if not session_id:
+            # Use Lambda request ID to create a unique but consistent session
+            request_id = context.request_id if context else datetime.now().strftime('%Y%m%d-%H%M%S')
+            session_id = f"lambda-{request_id[:8]}"
+            logger.info(f"Auto-generated session_id: {session_id}")
+        
         if not message:
             return {
                 'statusCode': 400,
@@ -69,7 +76,7 @@ def lambda_handler(event, context):
                     'error': 'No message provided',
                     'usage': {
                         'message': 'Your question or command (required)',
-                        'session_id': 'Unique session ID for conversation continuity (optional)',
+                        'session_id': 'Unique session ID for conversation continuity (auto-generated if not provided)',
                         'actor_id': 'User identifier for personalization (optional)'
                     },
                     'example': {
@@ -81,14 +88,11 @@ def lambda_handler(event, context):
             }
         
         logger.info(f"Processing message: {message[:100]}...")
-        if session_id:
-            logger.info(f"Using session_id: {session_id}")
+        logger.info(f"Using session_id: {session_id}")
         if actor_id:
             logger.info(f"Using actor_id: {actor_id}")
         
-        # Create or retrieve agent with memory
-        # Note: We create a new agent each time to ensure fresh memory state
-        # The session_manager handles the persistence
+        # Create or retrieve agent with memory (always enabled)
         agent = create_agent(
             session_id=session_id,
             actor_id=actor_id,
@@ -108,10 +112,6 @@ def lambda_handler(event, context):
         
         logger.info(f"Generated response: {response[:100]}...")
         
-        # Generate session_id if not provided (for next call)
-        if not session_id:
-            session_id = f"session-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        
         return {
             'statusCode': 200,
             'headers': {
@@ -122,8 +122,8 @@ def lambda_handler(event, context):
                 'response': response,
                 'message': message,
                 'session_id': session_id,
-                'memory_enabled': session_id is not None,
-                'tip': 'Include the session_id in your next request to maintain conversation context'
+                'memory_enabled': True,
+                'tip': 'Use the same session_id in your next request to continue this conversation'
             })
         }
         
