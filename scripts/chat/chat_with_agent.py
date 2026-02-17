@@ -51,6 +51,15 @@ def invoke_agent(lambda_client, message, session_id, region='us-east-2'):
         
         if response['StatusCode'] == 200:
             body = json.loads(payload.get('body', '{}'))
+            
+            # Check if there's an error in the body
+            if 'error' in body:
+                error_msg = body.get('error', 'Unknown error')
+                suggestion = body.get('suggestion', '')
+                if suggestion:
+                    error_msg = f"{error_msg}\n{suggestion}"
+                return None, error_msg
+            
             return body.get('response', 'No response received'), None
         else:
             return None, f"Lambda returned status code: {response['StatusCode']}"
@@ -145,7 +154,16 @@ def main():
             print('\r' + ' ' * 50 + '\r', end='', flush=True)
             
             if error:
-                print(f"{Colors.RED}❌ Error: {error}{Colors.END}\n")
+                # Check if it's a conversation history error
+                if 'Conversation history' in error or 'too long' in error:
+                    print(f"{Colors.YELLOW}⚠️  Conversation history has become too long.{Colors.END}")
+                    print(f"{Colors.YELLOW}   Starting a new session...{Colors.END}\n")
+                    # Start a new session
+                    session_id = f"chat-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+                    print_banner(session_id)
+                    print(f"{Colors.GREEN}✅ New session started. Please try your message again.{Colors.END}\n")
+                else:
+                    print(f"{Colors.RED}❌ Error: {error}{Colors.END}\n")
                 continue
             
             # Display response

@@ -129,6 +129,24 @@ def lambda_handler(event, context):
         
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}", exc_info=True)
+        
+        # Check if it's a conversation history corruption error
+        error_msg = str(e)
+        if 'toolResult blocks' in error_msg and 'toolUse blocks' in error_msg:
+            return {
+                'statusCode': 500,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({
+                    'error': 'Conversation history has become too long or corrupted',
+                    'suggestion': 'Please start a new session with a different session_id',
+                    'tip': 'Use a new session_id like: migration-' + datetime.now().strftime('%Y%m%d-%H%M%S'),
+                    'technical_details': error_msg
+                })
+            }
+        
         return {
             'statusCode': 500,
             'headers': {
