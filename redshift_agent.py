@@ -1541,65 +1541,43 @@ def create_agent(session_id: str = None, actor_id: str = None, region: str = "us
         max_tokens=4096,
     )
     
-    # Configure memory if session_id is provided
+    # Configure memory if session_id is provided AND memory is set up
     session_manager = None
     if session_id:
-        try:
-            # Get or create memory
-            memory_id = os.environ.get('AGENTCORE_MEMORY_ID')
-            
-            if not memory_id:
-                # Create memory on first use
-                client = MemoryClient(region_name=region)
-                memory = client.create_memory(
-                    name="RedshiftMigrationMemory",
-                    description="Persistent memory for Redshift migration conversations and progress tracking",
-                    strategies=[
-                        {
-                            "summaryMemoryStrategy": {
-                                "name": "MigrationSummarizer",
-                                "namespaces": ["/summaries/{actorId}/{sessionId}/"]
-                            }
-                        },
-                        {
-                            "userPreferenceMemoryStrategy": {
-                                "name": "UserPreferences",
-                                "namespaces": ["/preferences/{actorId}/"]
-                            }
-                        },
-                        {
-                            "semanticMemoryStrategy": {
-                                "name": "MigrationFacts",
-                                "namespaces": ["/facts/{actorId}/"]
-                            }
-                        }
-                    ]
+        memory_id = os.environ.get('AGENTCORE_MEMORY_ID')
+        
+        if memory_id:
+            # Memory is configured, use it
+            try:
+                if not actor_id:
+                    actor_id = "default_user"
+                
+                # Configure memory
+                agentcore_memory_config = AgentCoreMemoryConfig(
+                    memory_id=memory_id,
+                    session_id=session_id,
+                    actor_id=actor_id
                 )
-                memory_id = memory.get('id')
-                print(f"Created new memory: {memory_id}")
-                print(f"Set AGENTCORE_MEMORY_ID={memory_id} in your environment")
-            
-            # Use default actor_id if not provided
-            if not actor_id:
-                actor_id = "default_user"
-            
-            # Configure memory
-            agentcore_memory_config = AgentCoreMemoryConfig(
-                memory_id=memory_id,
-                session_id=session_id,
-                actor_id=actor_id
-            )
-            
-            # Create session manager
-            session_manager = AgentCoreMemorySessionManager(
-                agentcore_memory_config=agentcore_memory_config,
-                region_name=region
-            )
-            
-        except Exception as e:
-            print(f"Warning: Could not initialize memory: {e}")
-            print("Continuing without persistent memory...")
-            session_manager = None
+                
+                # Create session manager
+                session_manager = AgentCoreMemorySessionManager(
+                    agentcore_memory_config=agentcore_memory_config,
+                    region_name=region
+                )
+                
+                print(f"✅ Memory enabled: session_id={session_id}, actor_id={actor_id}")
+                
+            except Exception as e:
+                print(f"⚠️  Memory initialization failed: {e}")
+                print("Continuing without persistent memory...")
+                session_manager = None
+        else:
+            # session_id provided but memory not configured
+            print(f"ℹ️  session_id provided but AGENTCORE_MEMORY_ID not set")
+            print(f"   To enable persistent memory:")
+            print(f"   1. Run: python scripts/setup_memory.py --region {region}")
+            print(f"   2. Set the AGENTCORE_MEMORY_ID environment variable")
+            print(f"   Continuing without persistent memory for now...")
     
     agent = Agent(
         model=model,
