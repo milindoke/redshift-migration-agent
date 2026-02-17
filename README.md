@@ -26,6 +26,17 @@ This AI agent helps you migrate from AWS Redshift Provisioned clusters to Redshi
 - ✅ **Persistent memory across hours/days** - Agent remembers your migrations
 - ✅ Providing conversational guidance throughout the process
 
+## 🤖 AI-Driven Scaling & Cost Optimization
+
+The agent leverages the latest **AI-driven scaling features** of Amazon Redshift Serverless:
+
+- **Price-Performance Targets**: Automatically configures workgroups with balanced (50) price-performance settings
+- **Smart Cost Controls**: Sets MaxRPU limits automatically to prevent runaway costs
+- **Intelligent Scaling**: Redshift AI continuously optimizes compute resources based on workload patterns
+- **Zero Manual Tuning**: No need to manually adjust capacity - AI handles it for you
+
+This means your migrated workloads get optimal performance at the lowest cost, automatically.
+
 ## 🚀 Quick Deploy (3 Minutes)
 
 ### One-Command Deploy
