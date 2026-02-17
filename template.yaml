@@ -135,6 +135,7 @@ Resources:
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          AGENTCORE_MEMORY_ID: RedshiftMigrationMemory-CZT4DN5iup
       EphemeralStorage:
         Size: 1024
 
