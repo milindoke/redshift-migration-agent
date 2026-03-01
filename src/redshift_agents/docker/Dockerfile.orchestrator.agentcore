@@ -1,0 +1,57 @@
+# Dockerfile for Redshift Modernization Orchestrator (AgentCore)
+# For deployment to Amazon Bedrock AgentCore
+
+FROM public.ecr.aws/docker/library/python:3.12-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directory
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY orchestrator/ /app/orchestrator/
+COPY tools/ /app/tools/
+COPY __init__.py /app/
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV AWS_DEFAULT_REGION=us-east-2
+ENV STORAGE_DIR=/tmp/orchestrator
+
+# Create entry point script
+RUN echo '#!/usr/bin/env python3\n\
+import sys\n\
+sys.path.insert(0, "/app")\n\
+from orchestrator.orchestrator import create_orchestrator\n\
+from elastic_gumby_platform_partner_base_agent import AgentRuntimeServer\n\
+\n\
+def agent_factory():\n\
+    return create_orchestrator()\n\
+\n\
+if __name__ == "__main__":\n\
+    server = AgentRuntimeServer(\n\
+        agent_factory=agent_factory,\n\
+        host="0.0.0.0",\n\
+        port=8080,\n\
+        storage_dir="/tmp/orchestrator"\n\
+    )\n\
+    server.start()\n\
+' > /app/entrypoint.py && chmod +x /app/entrypoint.py
+
+# Expose port for AgentCore
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/ping')"
+
+# Start the agent runtime server
+CMD ["python3", "/app/entrypoint.py"]

@@ -1,0 +1,108 @@
+# Docker Compose for local testing of Redshift Modernization Agents
+# This allows you to test all agents locally before deploying to AWS
+
+version: '3.8'
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    container_name: redshift-orchestrator
+    environment:
+      - AWS_REGION=us-east-2
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - STORAGE_DIR=/tmp/orchestrator
+      - MCP_WORKSPACE_ID=${MCP_WORKSPACE_ID}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./storage/orchestrator:/tmp/orchestrator
+    networks:
+      - agent-network
+
+  assessment:
+    build:
+      context: .
+      dockerfile: Dockerfile.assessment
+    container_name: redshift-assessment
+    environment:
+      - AWS_REGION=us-east-2
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - STORAGE_DIR=/tmp/assessment
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./storage/assessment:/tmp/assessment
+    networks:
+      - agent-network
+
+  scoring:
+    build:
+      context: .
+      dockerfile: Dockerfile.scoring
+    container_name: redshift-scoring
+    environment:
+      - AWS_REGION=us-east-2
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - STORAGE_DIR=/tmp/scoring
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./storage/scoring:/tmp/scoring
+    networks:
+      - agent-network
+
+  architecture:
+    build:
+      context: .
+      dockerfile: Dockerfile.architecture
+    container_name: redshift-architecture
+    environment:
+      - AWS_REGION=us-east-2
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - STORAGE_DIR=/tmp/architecture
+    ports:
+      - "8083:8083"
+    volumes:
+      - ./storage/architecture:/tmp/architecture
+    networks:
+      - agent-network
+
+  execution:
+    build:
+      context: .
+      dockerfile: Dockerfile.execution
+    container_name: redshift-execution
+    environment:
+      - AWS_REGION=us-east-2
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      - STORAGE_DIR=/tmp/execution
+    ports:
+      - "8084:8084"
+    volumes:
+      - ./storage/execution:/tmp/execution
+    networks:
+      - agent-network
+
+networks:
+  agent-network:
+    driver: bridge
+
+volumes:
+  orchestrator-storage:
+  assessment-storage:
+  scoring-storage:
+  architecture-storage:
+  execution-storage:

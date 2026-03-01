@@ -1,0 +1,6 @@
+# Test dependencies for local unit testing
+# Install with: pip install -r tests/requirements-test.txt
+
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.1

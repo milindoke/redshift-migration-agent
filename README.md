@@ -2,6 +2,8 @@
 
 AI-powered agent to migrate AWS Redshift Provisioned clusters to Serverless with zero downtime.
 
+> **🆕 NEW: ATX Multi-Agent Architecture** - Now includes a production-ready multi-agent system for comprehensive Redshift modernization using AWS Transform (ATX) framework. See [ATX Implementation](#-atx-multi-agent-architecture) below.
+
 [![GitHub release](https://img.shields.io/github/v/release/milindoke/redshift-migration-agent)](https://github.com/milindoke/redshift-migration-agent/releases)
 [![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-orange?logo=amazon-aws)](https://github.com/milindoke/redshift-migration-agent)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -182,6 +184,7 @@ Agent: [Checks and reports status]
 
 ## 🏗️ Architecture
 
+### Lambda-Based Migration Agent (Current)
 ```
 User Request
     ↓
@@ -193,6 +196,19 @@ AWS Redshift APIs
     ↓
 Migration Complete
 ```
+
+### 🆕 ATX Multi-Agent Architecture (New)
+
+For comprehensive Redshift modernization with cross-account security:
+
+```
+Service Account (Orchestrator)  ←→  Customer Account (4 Subagents)
+     No Cluster Access                  Direct Cluster Access
+```
+
+**Branch**: `atx-redshift-modernization-agent`
+
+See [ATX Implementation](#-atx-multi-agent-architecture) section below for details.
 
 ## 💰 Cost Estimate
 
@@ -319,6 +335,104 @@ If this project helped you, please ⭐ star it on GitHub!
 - [AWS Redshift Documentation](https://docs.aws.amazon.com/redshift/)
 - [Strands Agents SDK](https://github.com/strands-agents/sdk-python)
 - [Amazon Bedrock](https://aws.amazon.com/bedrock/)
+
+---
+
+## 🏢 ATX Multi-Agent Architecture
+
+### Overview
+
+A production-ready multi-agent system for comprehensive Redshift modernization using AWS Transform (ATX) framework. This implementation uses a cross-account architecture for maximum security and compliance.
+
+### Architecture
+
+**Service Account** (Orchestrator):
+- Coordinates modernization workflow
+- Maintains conversation state
+- NO direct access to customer clusters
+
+**Customer Account** (4 Subagents):
+- Assessment: Analyzes cluster configuration
+- Scoring: Evaluates best practices (0-100 score, A-F grade)
+- Architecture: Designs multi-warehouse topology
+- Execution: Creates phased implementation plan
+
+### Key Features
+
+✅ **Cross-Account Security**: Customer data never leaves customer account  
+✅ **Best Practices Scoring**: Automated evaluation against AWS standards  
+✅ **Multi-Warehouse Design**: Workload separation and data sharing strategies  
+✅ **Phased Migration**: 5-phase implementation plan (12-18 weeks)  
+✅ **Production Ready**: Built on ATX BaseAgent SDK with Strands framework  
+
+### Quick Start
+
+```bash
+# Switch to ATX branch
+git checkout atx-redshift-modernization-agent
+
+# Local testing
+cd src/atx_agents
+python -m orchestrator.orchestrator_cli --local-testing
+
+# Try it
+> Analyze my Redshift cluster 'my-cluster-id'
+> Design a multi-warehouse architecture
+```
+
+### Documentation
+
+- **[ATX Implementation Summary](ATX_IMPLEMENTATION_SUMMARY.md)** - Complete overview
+- **[Cross-Account Deployment](src/atx_agents/CROSS_ACCOUNT_DEPLOYMENT.md)** - Production deployment
+- **[Architecture Details](src/atx_agents/ARCHITECTURE.md)** - System design
+- **[Quick Start](src/atx_agents/QUICK_START.md)** - Get started in 5 minutes
+- **[Deployment Checklist](src/atx_agents/DEPLOYMENT_CHECKLIST.md)** - Step-by-step guide
+
+### Benefits
+
+**vs. Lambda Agent**:
+- Multi-agent coordination for complex workflows
+- Stateful conversation management
+- Cross-account security model
+- Production-grade infrastructure
+
+**vs. Manual Modernization**:
+- Automated assessment and scoring
+- Best practices built-in
+- Consistent methodology
+- Faster time to value
+
+### Deployment
+
+**Service Account** (Redshift Service Team):
+```bash
+cd src/atx_agents/orchestrator
+docker build -t orchestrator:latest .
+# Deploy to ECS in service account
+```
+
+**Customer Account**:
+```bash
+cd src/atx_agents/subagents
+# Build and deploy all 4 subagents to customer account
+```
+
+See [Cross-Account Deployment Guide](src/atx_agents/CROSS_ACCOUNT_DEPLOYMENT.md) for complete instructions.
+
+### Use Cases
+
+1. **Comprehensive Assessment**: Analyze cluster configuration, performance, and usage patterns
+2. **Best Practices Evaluation**: Get scored on security, performance, and cost optimization
+3. **Architecture Design**: Design multi-warehouse topology with workload separation
+4. **Phased Migration**: Execute 12-18 week implementation plan with validation
+
+### Technology Stack
+
+- Python 3.11+
+- AWS Transform (ATX) BaseAgent SDK
+- Strands Framework
+- ECS Fargate
+- Cross-account IAM roles
 
 ---
 
