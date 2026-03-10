@@ -17,11 +17,9 @@
 │   ├── tests/
 │   │   └── test_redshift_tools.py
 │   ├── docker/                   # Dockerfiles (one per agent) + docker-compose
-│   ├── packages/                 # Pre-built deployment ZIPs
 │   ├── docs/                     # Deployment checklist, testing guide
 │   ├── requirements.txt
 │   └── *.sh                      # Build/deploy shell scripts
-└── .aws-sam/                     # SAM build artifacts (auto-generated)
 ```
 
 ## Architecture Patterns

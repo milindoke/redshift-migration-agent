@@ -19,6 +19,9 @@ response.json
 .agent-credentials
 packaged.yaml
 
+# Deployment artifacts
+src/redshift_agents/packages/
+
 # IDE
 .vscode/
 .idea/
