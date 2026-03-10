@@ -10,6 +10,8 @@ import os
 from eg_platform_base_agent.subagent_strands.base_subagent import AsyncBaseSubagent
 from mcp import MCPClient
 
+from ..tools.audit_logger import emit_audit_event
+
 
 EXECUTION_SYSTEM_PROMPT = """You are the Modernization Execution Subagent for Redshift.
 
@@ -179,6 +181,11 @@ def create_execution_subagent(
     storage_dir: str
 ) -> 'AsyncBaseSubagent':
     """Create Execution Subagent."""
+    emit_audit_event(
+        "agent_start",
+        "execution",
+        details={"storage_dir": storage_dir},
+    )
     return AsyncBaseSubagent(
         system_prompt=EXECUTION_SYSTEM_PROMPT,
         mcp_clients=[mcp_client] if mcp_client else None,

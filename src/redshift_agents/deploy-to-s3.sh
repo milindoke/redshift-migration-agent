@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy packaged agents to S3
+# Deploy packaged agents to S3 (single customer account)
 
 set -e
 
@@ -19,82 +19,55 @@ if [ ! -d "packages" ]; then
     exit 1
 fi
 
-# Service Account Configuration
-SERVICE_ACCOUNT_ID="497316421912"
-SERVICE_BUCKET="redshift-agents-${SERVICE_ACCOUNT_ID}"
-SERVICE_REGION="us-east-2"
-SERVICE_PROFILE="service-account"
+# Configuration — single customer account
+AWS_PROFILE="${AWS_PROFILE:-default}"
+AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-}"
+REGION="${AWS_REGION:-us-east-2}"
 
-# Customer Account Configuration
-CUSTOMER_ACCOUNT_ID="188199011335"
-CUSTOMER_BUCKET="redshift-agents-${CUSTOMER_ACCOUNT_ID}"
-CUSTOMER_REGION="us-east-2"
-CUSTOMER_PROFILE="customer-account"
+# Auto-detect account ID if not set
+if [ -z "$AWS_ACCOUNT_ID" ]; then
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --profile "$AWS_PROFILE" --query Account --output text)
+fi
+
+BUCKET="redshift-agents-${AWS_ACCOUNT_ID}"
 
 echo ""
 echo "Configuration:"
-echo "  Service Account: ${SERVICE_ACCOUNT_ID}"
-echo "  Service Bucket: ${SERVICE_BUCKET}"
-echo "  Customer Account: ${CUSTOMER_ACCOUNT_ID}"
-echo "  Customer Bucket: ${CUSTOMER_BUCKET}"
+echo "  Account: ${AWS_ACCOUNT_ID}"
+echo "  Bucket:  ${BUCKET}"
+echo "  Region:  ${REGION}"
+echo "  Profile: ${AWS_PROFILE}"
 echo ""
 
 # Verify credentials
 echo -e "${BLUE}Verifying AWS credentials...${NC}"
-
-echo "Checking service account credentials..."
-if ! aws sts get-caller-identity --profile ${SERVICE_PROFILE} > /dev/null 2>&1; then
-    echo -e "${RED}Error: Service account credentials are invalid or expired${NC}"
-    echo "Please refresh credentials for profile: ${SERVICE_PROFILE}"
+if ! aws sts get-caller-identity --profile "$AWS_PROFILE" > /dev/null 2>&1; then
+    echo -e "${RED}Error: AWS credentials are invalid or expired${NC}"
+    echo "Please refresh credentials for profile: ${AWS_PROFILE}"
     exit 1
 fi
-echo -e "${GREEN}✓ Service account credentials valid${NC}"
-
-echo "Checking customer account credentials..."
-if ! aws sts get-caller-identity --profile ${CUSTOMER_PROFILE} > /dev/null 2>&1; then
-    echo -e "${RED}Error: Customer account credentials are invalid or expired${NC}"
-    echo "Please refresh credentials for profile: ${CUSTOMER_PROFILE}"
-    exit 1
-fi
-echo -e "${GREEN}✓ Customer account credentials valid${NC}"
+echo -e "${GREEN}✓ Credentials valid${NC}"
 
 echo ""
-echo -e "${BLUE}Step 1: Create S3 buckets (if they don't exist)${NC}"
+echo -e "${BLUE}Step 1: Create S3 bucket (if it doesn't exist)${NC}"
 
-# Create service account bucket
-echo "Creating service account bucket: ${SERVICE_BUCKET}"
-if aws s3 ls s3://${SERVICE_BUCKET} --profile ${SERVICE_PROFILE} 2>&1 | grep -q 'NoSuchBucket'; then
-    aws s3 mb s3://${SERVICE_BUCKET} --region ${SERVICE_REGION} --profile ${SERVICE_PROFILE}
-    echo -e "${GREEN}✓ Service bucket created${NC}"
+echo "Creating bucket: ${BUCKET}"
+if aws s3 ls s3://${BUCKET} --profile "$AWS_PROFILE" 2>&1 | grep -q 'NoSuchBucket'; then
+    aws s3 mb s3://${BUCKET} --region ${REGION} --profile "$AWS_PROFILE"
+    echo -e "${GREEN}✓ Bucket created${NC}"
 else
-    echo -e "${GREEN}✓ Service bucket already exists${NC}"
-fi
-
-# Create customer account bucket
-echo "Creating customer account bucket: ${CUSTOMER_BUCKET}"
-if aws s3 ls s3://${CUSTOMER_BUCKET} --profile ${CUSTOMER_PROFILE} 2>&1 | grep -q 'NoSuchBucket'; then
-    aws s3 mb s3://${CUSTOMER_BUCKET} --region ${CUSTOMER_REGION} --profile ${CUSTOMER_PROFILE}
-    echo -e "${GREEN}✓ Customer bucket created${NC}"
-else
-    echo -e "${GREEN}✓ Customer bucket already exists${NC}"
+    echo -e "${GREEN}✓ Bucket already exists${NC}"
 fi
 
 echo ""
-echo -e "${BLUE}Step 2: Upload orchestrator to service account${NC}"
-aws s3 cp packages/orchestrator-deployment.zip \
-    s3://${SERVICE_BUCKET}/orchestrator/orchestrator-deployment.zip \
-    --profile ${SERVICE_PROFILE}
-echo -e "${GREEN}✓ Orchestrator uploaded${NC}"
+echo -e "${BLUE}Step 2: Upload all agent packages${NC}"
 
-echo ""
-echo -e "${BLUE}Step 3: Upload subagents to customer account${NC}"
-
-for agent in assessment scoring architecture execution; do
-    echo "Uploading ${agent} subagent..."
+for agent in orchestrator assessment scoring architecture execution; do
+    echo "Uploading ${agent}..."
     aws s3 cp packages/${agent}-deployment.zip \
-        s3://${CUSTOMER_BUCKET}/${agent}/${agent}-deployment.zip \
-        --profile ${CUSTOMER_PROFILE}
-    echo -e "${GREEN}✓ ${agent} subagent uploaded${NC}"
+        s3://${BUCKET}/${agent}/${agent}-deployment.zip \
+        --profile "$AWS_PROFILE"
+    echo -e "${GREEN}✓ ${agent} uploaded${NC}"
 done
 
 echo ""
@@ -103,13 +76,11 @@ echo "All packages uploaded successfully!"
 echo "==================================================${NC}"
 echo ""
 echo "S3 URIs:"
-echo "  Orchestrator: s3://${SERVICE_BUCKET}/orchestrator/orchestrator-deployment.zip"
-echo "  Assessment:   s3://${CUSTOMER_BUCKET}/assessment/assessment-deployment.zip"
-echo "  Scoring:      s3://${CUSTOMER_BUCKET}/scoring/scoring-deployment.zip"
-echo "  Architecture: s3://${CUSTOMER_BUCKET}/architecture/architecture-deployment.zip"
-echo "  Execution:    s3://${CUSTOMER_BUCKET}/execution/execution-deployment.zip"
+for agent in orchestrator assessment scoring architecture execution; do
+    echo "  ${agent}: s3://${BUCKET}/${agent}/${agent}-deployment.zip"
+done
 echo ""
 echo "Next steps:"
 echo "1. Deploy via Bedrock AgentCore Console"
 echo "2. Use the S3 URIs above"
-echo "3. See README.md for detailed deployment instructions"
+echo "3. See docs/deployment-checklist.md for detailed instructions"

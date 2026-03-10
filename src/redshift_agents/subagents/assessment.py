@@ -15,6 +15,7 @@ from ..tools.redshift_tools import (
     get_cluster_metrics,
     list_redshift_clusters,
 )
+from ..tools.audit_logger import emit_audit_event
 
 
 ASSESSMENT_SYSTEM_PROMPT = """You are the Assessment Subagent for Redshift cluster analysis.
@@ -170,6 +171,11 @@ def create_assessment_subagent(
     Note:
         The BaseAgent SDK is automatically available via pip when using atx-dev power.
     """
+    emit_audit_event(
+        "agent_start",
+        "assessment",
+        details={"storage_dir": storage_dir},
+    )
     return AsyncBaseSubagent(
         system_prompt=ASSESSMENT_SYSTEM_PROMPT,
         mcp_clients=[mcp_client] if mcp_client else None,

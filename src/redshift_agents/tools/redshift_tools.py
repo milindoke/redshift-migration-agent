@@ -9,6 +9,8 @@ from typing import Dict, List, Optional
 
 from strands.tools import tool
 
+from .audit_logger import emit_audit_event
+
 
 @tool
 def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-2") -> Dict:
@@ -28,6 +30,14 @@ def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-2") -> Dict
         - Endpoint details
     """
     redshift = boto3.client('redshift', region_name=region)
+    
+    emit_audit_event(
+        "tool_invocation",
+        "assessment",
+        cluster_id=cluster_id,
+        region=region,
+        details={"tool": "analyze_redshift_cluster"},
+    )
     
     try:
         response = redshift.describe_clusters(ClusterIdentifier=cluster_id)
@@ -106,6 +116,14 @@ def get_cluster_metrics(
         - Query performance indicators
     """
     cloudwatch = boto3.client('cloudwatch', region_name=region)
+    
+    emit_audit_event(
+        "tool_invocation",
+        "assessment",
+        cluster_id=cluster_id,
+        region=region,
+        details={"tool": "get_cluster_metrics", "hours": hours},
+    )
     
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(hours=hours)
@@ -188,6 +206,13 @@ def list_redshift_clusters(region: str = "us-east-2") -> List[Dict]:
         - Creation time
     """
     redshift = boto3.client('redshift', region_name=region)
+    
+    emit_audit_event(
+        "tool_invocation",
+        "assessment",
+        region=region,
+        details={"tool": "list_redshift_clusters"},
+    )
     
     try:
         response = redshift.describe_clusters()

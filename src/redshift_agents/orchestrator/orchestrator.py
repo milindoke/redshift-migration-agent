@@ -2,17 +2,22 @@
 Redshift Modernization Orchestrator using ATX BaseAgent SDK.
 
 This orchestrator coordinates the complete Redshift modernization workflow
-by delegating tasks to specialized subagents.
+by delegating tasks to specialized subagents. All agents run within the
+customer account.
 """
+import logging
 from typing import Optional
 
 from eg_platform_base_agent.orchestrator_strands.base_orchestrator import AsyncBaseOrchestrator
 from eg_platform_base_agent.agent_factory import create_default_async_orchestrator_with_subagent
 from mcp import MCPClient
 
+from ..tools.audit_logger import emit_audit_event
+
 ORCHESTRATOR_SYSTEM_PROMPT = """You are the Redshift Modernization Orchestrator for AWS Transform.
 
 Your mission is to guide customers through comprehensive Redshift cluster modernization.
+You and all subagents run within the customer's AWS account — there is no separate service account.
 
 ## Your Responsibilities
 
@@ -23,7 +28,8 @@ Your mission is to guide customers through comprehensive Redshift cluster modern
 
 ## Available Subagents
 
-You can invoke these subagents using the InvokeAgent tool provided by the MCP client:
+You can invoke these subagents using the InvokeAgent tool provided by the MCP client.
+All subagents run in the same customer account as you.
 
 1. **redshift-assessment-subagent**
    - Agent ID: `redshift-assessment-subagent`
@@ -121,11 +127,12 @@ The tool will return an agentInstanceId. You can then use GetAgentInstance to re
 
 ## Important Notes
 
-- You coordinate but don't directly access customer resources
+- All agents (orchestrator and subagents) run within the customer account
+- No separate service account is required
 - All cluster operations are delegated to subagents
-- Subagents run in customer account with proper Redshift permissions
+- Subagents have direct Redshift permissions within the customer account
 - Maintain conversation context across interactions
-- Always include customer_account_id in subagent invocations for proper isolation
+- Always include customer_account_id in subagent invocations for namespace isolation
 - Use namespace-based session IDs for cluster identification
 
 ## Example Interaction Flow
@@ -161,6 +168,11 @@ def create_orchestrator(mcp_client, storage_dir: str):
     Note:
         The BaseAgent SDK is automatically available via pip when using atx-dev power.
     """
+    emit_audit_event(
+        "agent_start",
+        "orchestrator",
+        details={"storage_dir": storage_dir},
+    )
     return create_default_async_orchestrator_with_subagent(
         mcp_client=mcp_client,
         storage_dir=storage_dir,

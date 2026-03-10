@@ -79,17 +79,13 @@ Removed all obsolete implementation files:
 
 ### ECR Image Locations
 
-**Service Account (497316421912):**
+**Customer Account (<ACCOUNT_ID>):**
 ```
-497316421912.dkr.ecr.us-east-2.amazonaws.com/redshift-orchestrator:latest
-```
-
-**Customer Account (188199011335):**
-```
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-assessment:latest
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-scoring:latest
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-architecture:latest
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-execution:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-orchestrator:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-assessment:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-scoring:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-architecture:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-execution:latest
 ```
 
 ## Next Steps
@@ -142,9 +138,9 @@ Removed all obsolete implementation files:
    - Orchestrator coordinates workflow
    - 4 specialized subagents (Assessment, Scoring, Architecture, Execution)
 
-2. **Cross-Account Security**
-   - Orchestrator in service account (no cluster access)
-   - Subagents in customer account (with cluster access)
+2. **Single-Account Deployment**
+   - All agents (orchestrator + subagents) in customer account
+   - No service account dependency
    - ATX MCP for agent-to-agent communication
 
 3. **Container-Based Deployment**
@@ -182,7 +178,7 @@ Complete ATX-based Redshift Modernization Agents implementation
 
 - Implemented 5 agents using ATX BaseAgent SDK
 - Built and pushed Docker images to ECR using Finch
-- Cross-account architecture maintained
+- Single-account deployment (all agents in customer account)
 - Ready for Bedrock AgentCore deployment
 - Cleaned up documentation (kept only essential files)
 ```

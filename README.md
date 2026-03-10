@@ -13,7 +13,7 @@ This multi-agent system helps you modernize AWS Redshift Provisioned clusters to
 - ✅ **Best Practices Scoring**: Evaluates security, performance, and cost (0-100 score, A-F grade)
 - ✅ **Architecture Design**: Designs multi-warehouse topology with workload separation
 - ✅ **Phased Migration Planning**: Creates 12-18 week implementation plan with validation gates
-- ✅ **Cross-Account Security**: Customer data never leaves customer account
+- ✅ **Single-Account Deployment**: All agents run within the customer account
 - ✅ **Conversation Isolation**: Namespace-based session management per customer
 
 ## 🏗️ Architecture
@@ -21,19 +21,21 @@ This multi-agent system helps you modernize AWS Redshift Provisioned clusters to
 ### Multi-Agent System
 
 ```
-Service Account (Orchestrator)  ←→  Customer Account (4 Subagents)
-     No Cluster Access                  Direct Cluster Access
-          ↓                                      ↓
-    Coordinates workflow              Assessment, Scoring,
-    Maintains state                   Architecture, Execution
+Customer Account (All 5 Agents)
+          ↓
+    Orchestrator coordinates workflow
+    Subagents have direct cluster access
+          ↓
+    Assessment, Scoring,
+    Architecture, Execution
 ```
 
 **5 Agents Total:**
 
-1. **Orchestrator** (Service Account)
+1. **Orchestrator** (Customer Account)
    - Coordinates modernization workflow
    - Maintains conversation state
-   - NO direct access to customer clusters
+   - Delegates to subagents via MCP
 
 2. **Assessment Agent** (Customer Account)
    - Analyzes cluster configuration
@@ -67,7 +69,7 @@ Service Account (Orchestrator)  ←→  Customer Account (4 Subagents)
 
 ### Prerequisites
 
-- AWS Account (2 accounts for cross-account setup)
+- AWS Account (single customer account)
 - Docker images built and pushed to ECR
 - Bedrock model access enabled (Claude Sonnet 4.5)
 - IAM permissions for Bedrock AgentCore
@@ -150,12 +152,12 @@ Orchestrator → Execution Agent:
 
 ## 🔒 Security Features
 
-### Cross-Account Architecture
+### Single-Account Architecture
 
-- **Service Account**: Orchestrator with NO cluster access
-- **Customer Account**: Subagents with direct cluster access
+- **All Agents in Customer Account**: Orchestrator and subagents run in the same account
 - **Data Isolation**: Customer data never leaves customer account
-- **IAM Roles**: Cross-account assume role with least privilege
+- **No Cross-Account Dependencies**: No service account required
+- **IAM Roles**: Least-privilege permissions within the customer account
 
 ### Conversation Isolation
 

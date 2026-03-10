@@ -10,6 +10,8 @@ import os
 from eg_platform_base_agent.subagent_strands.base_subagent import AsyncBaseSubagent
 from mcp import MCPClient
 
+from ..tools.audit_logger import emit_audit_event
+
 
 ARCHITECTURE_SYSTEM_PROMPT = """You are the Architecture Design Subagent for Redshift modernization.
 
@@ -122,6 +124,11 @@ def create_architecture_subagent(
     storage_dir: str
 ) -> 'AsyncBaseSubagent':
     """Create Architecture Design Subagent."""
+    emit_audit_event(
+        "agent_start",
+        "architecture",
+        details={"storage_dir": storage_dir},
+    )
     return AsyncBaseSubagent(
         system_prompt=ARCHITECTURE_SYSTEM_PROMPT,
         mcp_clients=[mcp_client] if mcp_client else None,

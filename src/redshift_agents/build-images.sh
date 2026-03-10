@@ -60,6 +60,6 @@ echo "Images:"
 finch images | grep redshift
 echo
 echo "Next steps:"
-echo "1. Configure AWS credentials (service-account and customer-account profiles)"
+echo "1. Configure AWS credentials for the customer account"
 echo "2. Run ./src/redshift_agents/deploy-with-finch.sh to push to ECR"
 echo "3. Deploy to Bedrock AgentCore via console"

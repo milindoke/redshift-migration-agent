@@ -2,240 +2,84 @@
 
 ## Status: Images in ECR! 🎉
 
-All 5 container images have been successfully pushed to Amazon ECR!
+All 5 container images have been successfully pushed to Amazon ECR.
+All images reside in the customer account.
 
 ## ECR Image URIs
 
-### Service Account (497316421912) - Orchestrator
+All agents are in the customer account (`<ACCOUNT_ID>`):
 
 ```
-497316421912.dkr.ecr.us-east-2.amazonaws.com/redshift-orchestrator:latest
-```
-
-### Customer Account (188199011335) - Subagents
-
-```
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-assessment:latest
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-scoring:latest
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-architecture:latest
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-execution:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-orchestrator:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-assessment:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-scoring:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-architecture:latest
+<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-execution:latest
 ```
 
 ## Next Step: Deploy to Bedrock AgentCore
 
 ### Prerequisites
 
-You'll need ATX credentials from your SA:
-- **Workspace ID**
-- **MCP Auth Token** (from AWS Secrets Manager)
+- ATX credentials: Workspace ID, MCP Auth Token
+- IAM role with permissions for ECR pull, Redshift read, CloudWatch read/write, Bedrock InvokeAgent, S3
 
 ### Deployment Process
 
-Deploy each agent via the Bedrock Console. Here's the step-by-step for each:
+Deploy each agent via the Bedrock Console in the customer account.
 
 ---
 
-## 1. Deploy Orchestrator (Service Account)
+## 1. Deploy Orchestrator
 
-### Open Bedrock Console
+1. Navigate to: **AWS Bedrock Console** → **AgentCore** → **Create Agent**
+2. Configure:
+   - **Agent Name**: `redshift-orchestrator`
+   - **Image URI**: `<ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/redshift-orchestrator:latest`
+   - **Port**: `8080`
+3. Set execution role with: ECR pull, Bedrock InvokeAgent, CloudWatch Logs write, S3 read/write
+4. Environment variables:
+   ```
+   WORKSPACE_ID=<your-workspace-id>
+   MCP_AUTH_TOKEN=<your-auth-token>
+   AWS_REGION=us-east-2
+   STORAGE_DIR=/tmp/orchestrator
+   ```
+5. Health check: `/ping` on port 8080
+6. Deploy and note the Agent ARN
 
-1. Switch to **service-account** profile (497316421912)
-2. Navigate to: **AWS Bedrock Console** → **AgentCore**
-3. Click **Create Agent**
+## 2. Deploy Subagents
 
-### Configure Agent
+Repeat for each subagent (assessment, scoring, architecture, execution):
 
-**Basic Settings:**
-- **Agent Name**: `redshift-orchestrator`
-- **Description**: `Redshift Modernization Orchestrator - coordinates workflow`
+| Agent | Image | Port |
+|-------|-------|------|
+| `redshift-assessment-subagent` | `redshift-assessment:latest` | 8080 |
+| `redshift-scoring-subagent` | `redshift-scoring:latest` | 8080 |
+| `redshift-architecture-subagent` | `redshift-architecture:latest` | 8080 |
+| `redshift-execution-subagent` | `redshift-execution:latest` | 8080 |
 
-**Runtime Configuration:**
-- **Runtime Type**: Container
-- **Image URI**: 
-  ```
-  497316421912.dkr.ecr.us-east-2.amazonaws.com/redshift-orchestrator:latest
-  ```
-- **Port**: `8080`
+Execution role: ECR pull, Redshift DescribeClusters (read-only), CloudWatch GetMetricStatistics (read-only), CloudWatch Logs write
 
-**Execution Role:**
-- Create new role or select existing
-- Required permissions:
-  - ECR: Pull images
-  - Bedrock: InvokeAgent (for subagents)
-  - CloudWatch Logs: Write
-  - S3: Read/Write (for conversation storage)
-
-**Environment Variables:**
-```
-WORKSPACE_ID=<from-your-SA>
-MCP_AUTH_TOKEN=<from-secrets-manager>
-AWS_REGION=us-east-2
-STORAGE_DIR=/tmp/orchestrator
-```
-
-**Health Check:**
-- **Path**: `/ping`
-- **Port**: `8080`
-- **Interval**: 30 seconds
-
-### Deploy
-
-1. Click **Create**
-2. Wait for deployment (~3-5 minutes)
-3. **Note the Agent ARN** - you'll need this for ATX registration
-
----
-
-## 2. Deploy Assessment Subagent (Customer Account)
-
-### Open Bedrock Console
-
-1. Switch to **customer-account** profile (188199011335)
-2. Navigate to: **AWS Bedrock Console** → **AgentCore**
-3. Click **Create Agent**
-
-### Configure Agent
-
-**Basic Settings:**
-- **Agent Name**: `redshift-assessment-subagent`
-- **Description**: `Analyzes Redshift cluster configuration and performance`
-
-**Runtime Configuration:**
-- **Runtime Type**: Container
-- **Image URI**: 
-  ```
-  188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-assessment:latest
-  ```
-- **Port**: `8080`
-
-**Execution Role:**
-- Create new role or select existing
-- Required permissions:
-  - ECR: Pull images
-  - Redshift: DescribeClusters (read-only)
-  - CloudWatch: GetMetricStatistics (read-only)
-  - CloudWatch Logs: Write
-
-**Environment Variables:**
+Environment variables:
 ```
 AWS_REGION=us-east-2
-STORAGE_DIR=/tmp/assessment
-```
-
-**Health Check:**
-- **Path**: `/ping`
-- **Port**: `8080`
-- **Interval**: 30 seconds
-
-### Deploy
-
-1. Click **Create**
-2. Wait for deployment (~3-5 minutes)
-3. **Note the Agent ARN**
-
----
-
-## 3. Deploy Scoring Subagent (Customer Account)
-
-Repeat the process above with these changes:
-
-**Basic Settings:**
-- **Agent Name**: `redshift-scoring-subagent`
-- **Description**: `Evaluates best practices (Security 35%, Performance 35%, Cost 30%)`
-
-**Runtime Configuration:**
-- **Image URI**: 
-  ```
-  188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-scoring:latest
-  ```
-
-**Environment Variables:**
-```
-AWS_REGION=us-east-2
-STORAGE_DIR=/tmp/scoring
-```
-
----
-
-## 4. Deploy Architecture Subagent (Customer Account)
-
-**Basic Settings:**
-- **Agent Name**: `redshift-architecture-subagent`
-- **Description**: `Designs multi-warehouse architecture`
-
-**Runtime Configuration:**
-- **Image URI**: 
-  ```
-  188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-architecture:latest
-  ```
-
-**Environment Variables:**
-```
-AWS_REGION=us-east-2
-STORAGE_DIR=/tmp/architecture
-```
-
----
-
-## 5. Deploy Execution Subagent (Customer Account)
-
-**Basic Settings:**
-- **Agent Name**: `redshift-execution-subagent`
-- **Description**: `Creates and executes 5-phase migration plans`
-
-**Runtime Configuration:**
-- **Image URI**: 
-  ```
-  188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-execution:latest
-  ```
-
-**Environment Variables:**
-```
-AWS_REGION=us-east-2
-STORAGE_DIR=/tmp/execution
+STORAGE_DIR=/tmp/<agent-name>
 ```
 
 ---
 
 ## After Deployment: Register with ATX
 
-Once all agents are deployed, register them with ATX Agent Registry:
-
 ```bash
-# Register orchestrator
-aws bedrock-agent register-agent \
-  --agent-id redshift-orchestrator \
-  --agent-arn <arn-from-bedrock-console> \
-  --region us-east-2 \
-  --profile service-account
-
-# Register assessment subagent
-aws bedrock-agent register-agent \
-  --agent-id redshift-assessment-subagent \
-  --agent-arn <arn-from-bedrock-console> \
-  --region us-east-2 \
-  --profile customer-account
-
-# Register scoring subagent
-aws bedrock-agent register-agent \
-  --agent-id redshift-scoring-subagent \
-  --agent-arn <arn-from-bedrock-console> \
-  --region us-east-2 \
-  --profile customer-account
-
-# Register architecture subagent
-aws bedrock-agent register-agent \
-  --agent-id redshift-architecture-subagent \
-  --agent-arn <arn-from-bedrock-console> \
-  --region us-east-2 \
-  --profile customer-account
-
-# Register execution subagent
-aws bedrock-agent register-agent \
-  --agent-id redshift-execution-subagent \
-  --agent-arn <arn-from-bedrock-console> \
-  --region us-east-2 \
-  --profile customer-account
+for agent_id in redshift-orchestrator redshift-assessment-subagent redshift-scoring-subagent redshift-architecture-subagent redshift-execution-subagent; do
+  agent_type="subagent"
+  if [ "$agent_id" = "redshift-orchestrator" ]; then agent_type="orchestrator"; fi
+  aws bedrock-agent register-agent \
+    --agent-id $agent_id \
+    --agent-arn <arn-from-bedrock-console> \
+    --region us-east-2
+done
 ```
 
 ## Testing
@@ -248,13 +92,10 @@ aws bedrock-agent-runtime invoke-agent \
   --session-id test-$(date +%s) \
   --input-text "Analyze cluster test-cluster-01 in us-east-2" \
   --region us-east-2 \
-  --profile customer-account \
   response.json
-
-cat response.json
 ```
 
-### Test Orchestrator
+### Test Orchestrator (Full Workflow)
 
 ```bash
 aws bedrock-agent-runtime invoke-agent \
@@ -262,34 +103,18 @@ aws bedrock-agent-runtime invoke-agent \
   --session-id test-$(date +%s) \
   --input-text "Modernize cluster prod-cluster-01 in us-east-2" \
   --region us-east-2 \
-  --profile service-account \
   response.json
-
-cat response.json
 ```
 
 ## Monitoring
 
-### CloudWatch Logs
-
 ```bash
 # Orchestrator logs
-aws logs tail /aws/bedrock/agentcore/redshift-orchestrator \
-  --follow \
-  --profile service-account
+aws logs tail /aws/bedrock/agentcore/redshift-orchestrator --follow
 
 # Subagent logs
-aws logs tail /aws/bedrock/agentcore/redshift-assessment-subagent \
-  --follow \
-  --profile customer-account
+aws logs tail /aws/bedrock/agentcore/redshift-assessment-subagent --follow
 ```
-
-### Agent Status
-
-Check agent status in Bedrock Console:
-- Navigate to AgentCore
-- Select your agent
-- View status, logs, and metrics
 
 ## Timeline
 
@@ -303,70 +128,6 @@ Check agent status in Bedrock Console:
 | Test | 2 min | ⏳ Pending |
 | **Total remaining** | **~30 min** | |
 
-## Troubleshooting
-
-### Image pull fails
-- Verify execution role has ECR pull permissions
-- Check image URI is correct
-- Ensure region is us-east-2
-
-### Agent won't start
-- Check CloudWatch logs for errors
-- Verify environment variables are set
-- Ensure health check endpoint is accessible
-
-### Registration fails
-- Verify agent ARN is correct
-- Check ATX credentials are valid
-- Ensure agent is in "Running" state
-
-## Quick Reference
-
-### Image URIs (Copy-Paste Ready)
-
-**Orchestrator:**
-```
-497316421912.dkr.ecr.us-east-2.amazonaws.com/redshift-orchestrator:latest
-```
-
-**Assessment:**
-```
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-assessment:latest
-```
-
-**Scoring:**
-```
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-scoring:latest
-```
-
-**Architecture:**
-```
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-architecture:latest
-```
-
-**Execution:**
-```
-188199011335.dkr.ecr.us-east-2.amazonaws.com/redshift-execution:latest
-```
-
-### Environment Variables Template
-
-**Orchestrator:**
-```
-WORKSPACE_ID=<from-SA>
-MCP_AUTH_TOKEN=<from-secrets-manager>
-AWS_REGION=us-east-2
-STORAGE_DIR=/tmp/orchestrator
-```
-
-**Subagents:**
-```
-AWS_REGION=us-east-2
-STORAGE_DIR=/tmp/<agent-name>
-```
-
 ---
 
 **Status: Ready for Bedrock deployment!** 🚀
-
-**Next action: Deploy agents via Bedrock Console using the URIs above**

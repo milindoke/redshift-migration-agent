@@ -42,7 +42,7 @@ cd src/redshift_agents
 
 # Upload to S3
 aws s3 cp packages/orchestrator-deployment.zip \
-  s3://redshift-agents-dev-497316421912/orchestrator/
+  s3://redshift-agents-dev-<ACCOUNT_ID>/orchestrator/
 
 # Deploy via Bedrock Console
 # - Point to S3 location
@@ -258,15 +258,13 @@ This is true local testing - no AWS needed!
 **Orchestrator:**
 ```bash
 aws logs tail /aws/bedrock/agents/redshift-orchestrator \
-  --follow \
-  --profile service-account
+  --follow
 ```
 
 **Subagents:**
 ```bash
 aws logs tail /aws/bedrock/agents/redshift-assessment-subagent \
-  --follow \
-  --profile customer-account
+  --follow
 ```
 
 ### ATX Agent Instance Status

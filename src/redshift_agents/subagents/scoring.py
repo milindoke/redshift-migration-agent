@@ -11,6 +11,7 @@ from eg_platform_base_agent.subagent_strands.base_subagent import AsyncBaseSubag
 from mcp import MCPClient
 
 from ..tools.redshift_tools import analyze_redshift_cluster, get_cluster_metrics
+from ..tools.audit_logger import emit_audit_event
 
 
 SCORING_SYSTEM_PROMPT = """You are the Best Practices Scoring Subagent for Redshift clusters.
@@ -229,6 +230,11 @@ def create_scoring_subagent(
     Returns:
         Configured AsyncBaseSubagent instance with scoring capabilities
     """
+    emit_audit_event(
+        "agent_start",
+        "scoring",
+        details={"storage_dir": storage_dir},
+    )
     return AsyncBaseSubagent(
         system_prompt=SCORING_SYSTEM_PROMPT,
         mcp_clients=[mcp_client] if mcp_client else None,
