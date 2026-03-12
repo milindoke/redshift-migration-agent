@@ -5,19 +5,15 @@
 boto3>=1.34.0
 botocore>=1.34.0
 
-# ATX BaseAgent SDK
-# NOTE: SDK is installed from local wheel files in sdk/ directory
-# See Dockerfiles for installation
+# Strands Agent framework
+strands-agents>=0.1.0
+strands-agents-tools>=0.1.0
 
-# Async support
-aiohttp>=3.9.0
-aiohappyeyeballs>=2.6.0
+# Amazon Bedrock AgentCore
+bedrock-agentcore>=0.1.0
 
 # Logging and monitoring
 python-json-logger>=2.0.7
 
 # Environment management
 python-dotenv>=1.0.0
-
-# Type hints
-typing-extensions>=4.9.0

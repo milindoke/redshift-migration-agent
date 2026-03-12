@@ -1,91 +1,263 @@
-# Tasks: Redshift Modernization Agents
+# Implementation Plan: Redshift Modernization Agents
 
-## 1. Project Scaffolding
-- [x] Task 1.1: Create project structure (`src/redshift_agents/` with `orchestrator/`, `subagents/`, `tools/`, `tests/`, `docker/`, `docs/`)
-- [x] Task 1.2: Create `requirements.txt` with core dependencies (boto3, aiohttp, python-dotenv, python-json-logger)
-- [x] Task 1.3: Create `.env.example` with all required environment variables
-- [x] Task 1.4: Add `__init__.py` files for package structure
+## Overview
 
-## 2. Shared Redshift Tools
-- [x] Task 2.1: Implement `analyze_redshift_cluster(cluster_id, region)` — calls `redshift.describe_clusters()`, returns dict with config, security, network, endpoint info
-  - File: `src/redshift_agents/tools/redshift_tools.py`
-- [x] Task 2.2: Implement `get_cluster_metrics(cluster_id, region, hours)` — fetches 7 CloudWatch metrics (CPU, connections, network rx/tx, disk, read/write latency), returns summary stats
-  - File: `src/redshift_agents/tools/redshift_tools.py`
-- [x] Task 2.3: Implement `list_redshift_clusters(region)` — calls `redshift.describe_clusters()` without filter, returns list of cluster summaries
-  - File: `src/redshift_agents/tools/redshift_tools.py`
+Rewrite the existing Redshift Modernization Agents from ATX BaseAgent SDK + Docker to Strands Agent + BedrockAgentCoreApp + `agentcore launch`. The scoring agent is removed. The system now has 4 agents total: orchestrator + 3 subagents (assessment, architecture, execution). New capabilities include WLM queue analysis, cluster locking (DynamoDB), approval gates, identity propagation, cross-region support, 1:1 migration scenario, and opt-in cross-account log sharing.
 
-## 3. Assessment Subagent
-- [x] Task 3.1: Define `ASSESSMENT_SYSTEM_PROMPT` covering configuration analysis, performance analysis, usage pattern identification, risk assessment, and structured JSON output format
-  - File: `src/redshift_agents/subagents/assessment.py`
-- [x] Task 3.2: Implement `create_assessment_subagent(mcp_client, storage_dir)` factory — returns `AsyncBaseSubagent` with all 3 tools
-  - File: `src/redshift_agents/subagents/assessment.py`
-- [x] Task 3.3: Implement `main()` CLI entry point with `AgentRuntimeServer` on port 8081
-  - File: `src/redshift_agents/subagents/assessment.py`
+## Tasks
 
-## 4. Scoring Subagent
-- [x] Task 4.1: Define `SCORING_SYSTEM_PROMPT` with full scoring methodology (Security 35pts, Performance 35pts, Cost 30pts), subcategory point breakdowns, grading scale, and structured JSON output format
-  - File: `src/redshift_agents/subagents/scoring.py`
-- [x] Task 4.2: Implement `create_scoring_subagent(mcp_client, storage_dir)` factory — returns `AsyncBaseSubagent` with `analyze_redshift_cluster` and `get_cluster_metrics` tools
-  - File: `src/redshift_agents/subagents/scoring.py`
-- [x] Task 4.3: Implement `main()` CLI entry point on port 8082
-  - File: `src/redshift_agents/subagents/scoring.py`
+- [x] 1. Set up new project structure and dependencies
+  - [x] 1.1 Update `requirements.txt` with new dependencies
+    - Replace ATX BaseAgent SDK deps with `strands-agents`, `strands-agents-tools`, `bedrock-agentcore`
+    - Keep `boto3`, `python-dotenv`, `python-json-logger`
+    - Add `hypothesis` to `tests/requirements-test.txt`
+    - _Requirements: NFR-3.1, NFR-4.1_
+  - [x] 1.2 Create data model module with dataclasses
+    - Create `src/redshift_agents/models.py`
+    - Define `WLMQueueMetrics`, `ClusterSummary`, `AssessmentResult`, `WorkgroupSpec`, `DataSharingConfig`, `ArchitectureResult`, `MigrationStep`, `ExecutionResult`, `ClusterLock`, `AuditEvent` dataclasses per design
+    - _Requirements: FR-2.7, FR-3.7, FR-4.6_
+  - [x] 1.3 Remove old scoring agent module
+    - Delete `src/redshift_agents/subagents/scoring.py`
+    - Remove scoring references from orchestrator, docker-compose, and build scripts
+    - _Requirements: FR-1.5_
 
-## 5. Architecture Subagent
-- [x] Task 5.1: Define `ARCHITECTURE_SYSTEM_PROMPT` covering workload analysis, three architecture patterns (hub-and-spoke, independent, hybrid), sizing recommendations, and structured JSON output
-  - File: `src/redshift_agents/subagents/architecture.py`
-- [x] Task 5.2: Implement `create_architecture_subagent(mcp_client, storage_dir)` factory — reasoning-only agent with no custom tools
-  - File: `src/redshift_agents/subagents/architecture.py`
-- [x] Task 5.3: Implement `main()` CLI entry point on port 8083
-  - File: `src/redshift_agents/subagents/architecture.py`
+- [x] 2. Implement audit logger
+  - [x] 2.1 Rewrite `tools/audit_logger.py` with identity propagation
+    - Implement `emit_audit_event(event_type, agent_name, customer_account_id, initiated_by, cluster_id, region, details)` emitting structured JSON to `redshift_modernization_audit` logger
+    - `initiated_by` must be the `user_id` of the person who triggered the workflow
+    - `timestamp` must be ISO 8601
+    - `event_type` must be one of: `agent_start`, `tool_invocation`, `workflow_start`, `workflow_complete`, `phase_start`, `phase_complete`, `error`
+    - Best-effort account ID resolution: env var → STS → "unknown"
+    - Audit logging failures must never block the main workflow (catch and log to stderr)
+    - _Requirements: FR-5.4, NFR-6.1, NFR-6.2, NFR-6.6, NFR-7.2_
+  - [x] 2.2 Write property test for audit event schema validity
+    - **Property 14: Audit event schema validity**
+    - **Validates: Requirements FR-5.4, NFR-6.2, NFR-6.6, NFR-7.2**
+  - [x] 2.3 Write unit tests for audit logger
+    - Test all event types, missing fields, ISO 8601 format, stderr fallback on failure
+    - _Requirements: NFR-6.2, NFR-6.6_
 
-## 6. Execution Subagent
-- [x] Task 6.1: Define `EXECUTION_SYSTEM_PROMPT` covering 5-phase migration approach, IaC generation, data migration strategy, rollback procedures, monitoring plan, and structured JSON output
-  - File: `src/redshift_agents/subagents/execution.py`
-- [x] Task 6.2: Implement `create_execution_subagent(mcp_client, storage_dir)` factory — reasoning-only agent with no custom tools
-  - File: `src/redshift_agents/subagents/execution.py`
-- [x] Task 6.3: Implement `main()` CLI entry point on port 8084
-  - File: `src/redshift_agents/subagents/execution.py`
+- [ ] 3. Implement shared Redshift tools with cross-region and identity support
+  - [x] 3.1 Rewrite `tools/redshift_tools.py` — `list_redshift_clusters`
+    - Accept `region` and `user_id` parameters
+    - Create boto3 client with `region_name=region` (not hardcoded)
+    - Call `redshift.describe_clusters()`, return list of cluster summaries
+    - Emit audit event with `initiated_by=user_id`
+    - Return `{"error": ...}` on exceptions, never raise
+    - _Requirements: FR-2.1, FR-5.1, NFR-3.3_
+  - [x] 3.2 Write property test for cluster listing
+    - **Property 1: Cluster listing returns all clusters in region**
+    - **Validates: Requirements FR-2.1**
+  - [x] 3.3 Rewrite `analyze_redshift_cluster`
+    - Accept `cluster_id`, `region`, `user_id`
+    - Return dict with all required keys: `cluster_identifier`, `node_type`, `number_of_nodes`, `cluster_status`, `cluster_version`, `encrypted`, `vpc_id`, `publicly_accessible`, `enhanced_vpc_routing`
+    - Emit audit event, use region param for boto3 client
+    - _Requirements: FR-2.2, FR-5.1, NFR-3.3_
+  - [x] 3.4 Write property test for cluster configuration output
+    - **Property 2: Cluster configuration output contains all required fields**
+    - **Validates: Requirements FR-2.2**
+  - [x] 3.5 Rewrite `get_cluster_metrics`
+    - Accept `cluster_id`, `region`, `user_id`
+    - Fetch all 7 CloudWatch metrics: CPU, connections, network rx/tx, disk, read/write latency
+    - Emit audit event, use region param for boto3 client
+    - _Requirements: FR-2.3, FR-5.2, NFR-3.3_
+  - [x] 3.6 Write property test for CloudWatch metrics output
+    - **Property 3: CloudWatch metrics output contains all required metric categories**
+    - **Validates: Requirements FR-2.3**
+  - [x] 3.7 Implement `get_wlm_configuration`
+    - Accept `cluster_id`, `region`, `user_id`
+    - Query `STV_WLM_SERVICE_CLASS_CONFIG` via Redshift Data API with `DbUser=user_id`
+    - Return per-queue metrics: queue_name, service_class, concurrency, queries_waiting, avg_wait_time_ms, avg_exec_time_ms, wait_to_exec_ratio, queries_spilling_to_disk, disk_spill_mb, saturation_pct
+    - Emit audit event
+    - _Requirements: FR-2.4, FR-2.5, FR-5.3, NFR-7.3_
+  - [x] 3.8 Write property test for WLM per-queue metrics
+    - **Property 4: WLM per-queue metrics are complete**
+    - **Validates: Requirements FR-2.4, FR-2.5**
+  - [x] 3.9 Implement `execute_redshift_query`
+    - Accept `cluster_id`, `query`, `region`, `user_id`
+    - Execute via Redshift Data API with `DbUser=user_id` for identity propagation
+    - Emit audit event
+    - _Requirements: FR-5.3, NFR-7.1, NFR-7.3_
+  - [x] 3.10 Write property test for identity propagation consistency
+    - **Property 13: Identity propagation consistency**
+    - **Validates: Requirements FR-5.3, NFR-7.1, NFR-7.3**
+  - [x] 3.11 Write property test for region parameter passing
+    - **Property 18: Tools pass region parameter to boto3 client**
+    - **Validates: Requirements NFR-3.3**
 
-## 7. Orchestrator
-- [x] Task 7.1: Define `ORCHESTRATOR_SYSTEM_PROMPT` with subagent registry (4 agent IDs, capabilities, when-to-use), 4-phase workflow, InvokeAgent usage examples, and communication guidelines
-  - File: `src/redshift_agents/orchestrator/orchestrator.py`
-- [x] Task 7.2: Implement `create_orchestrator(mcp_client, storage_dir)` factory — uses `create_default_async_orchestrator_with_subagent()` from SDK
-  - File: `src/redshift_agents/orchestrator/orchestrator.py`
+- [ ] 4. Implement Serverless creation tools
+  - [x] 4.1 Implement `create_serverless_namespace`
+    - Accept namespace config, `region`, `user_id`
+    - Call `redshift-serverless.create_namespace()`
+    - Emit audit event, return structured result or error dict
+    - _Requirements: FR-4.1_
+  - [x] 4.2 Implement `create_serverless_workgroup`
+    - Accept workgroup spec (name, base_rpu, max_rpu, scaling_policy), `region`, `user_id`
+    - Call `redshift-serverless.create_workgroup()`
+    - Emit audit event
+    - _Requirements: FR-4.1_
+  - [x] 4.3 Implement `restore_snapshot_to_serverless`
+    - Accept snapshot ID, namespace, `region`, `user_id`
+    - Call `redshift.restore_from_cluster_snapshot()` targeting Serverless
+    - Emit audit event
+    - _Requirements: FR-4.2_
+  - [x] 4.4 Implement `setup_data_sharing`
+    - Accept producer workgroup, consumer workgroups, `region`, `user_id`
+    - Create datashare, add schema/tables, grant to consumer namespaces
+    - Emit audit event
+    - _Requirements: FR-4.3_
 
-## 8. Docker & Deployment
-- [x] Task 8.1: Create `Dockerfile.orchestrator` — SDK wheels + orchestrator code, uses `orchestrator_cli`, port 8080
-  - File: `src/redshift_agents/docker/Dockerfile.orchestrator`
-- [x] Task 8.2: Create `Dockerfile.assessment` — SDK wheels + subagent + tools code, uses `subagent_cli`, port 8080 (internal)
-  - File: `src/redshift_agents/docker/Dockerfile.assessment`
-- [x] Task 8.3: Create `Dockerfile.scoring`, `Dockerfile.architecture`, `Dockerfile.execution` — same pattern as assessment
-  - Files: `src/redshift_agents/docker/Dockerfile.scoring`, `Dockerfile.architecture`, `Dockerfile.execution`
-- [x] Task 8.4: Create `docker-compose.yml` for local multi-agent testing with bridge network, env passthrough, and volume mounts
-  - File: `src/redshift_agents/docker/docker-compose.yml`
-- [x] Task 8.5: Create build and deploy shell scripts (`build-images.sh`, `deploy-with-finch.sh`, `push-to-ecr.sh`)
-  - Files: `src/redshift_agents/build-images.sh`, `deploy-with-finch.sh`, `push-to-ecr.sh`
+- [x] 5. Checkpoint — Ensure all tool tests pass
+  - Ensure all tests pass, ask the user if questions arise.
 
-## 9. Testing
-- [x] Task 9.1: Write unit tests for `analyze_redshift_cluster` — mock `boto3.client('redshift')`, test success and error cases
-  - File: `src/redshift_agents/tests/test_redshift_tools.py`
-- [x] Task 9.2: Write unit tests for `get_cluster_metrics` — mock `boto3.client('cloudwatch')`, test with data and empty datapoints
-  - File: `src/redshift_agents/tests/test_redshift_tools.py`
-- [x] Task 9.3: Write unit tests for `list_redshift_clusters` — mock responses for multiple clusters, empty list, and errors
-  - File: `src/redshift_agents/tests/test_redshift_tools.py`
-- [x] Task 9.4: Create `requirements-test.txt` with pytest, pytest-cov, pytest-mock
-  - File: `src/redshift_agents/tests/requirements-test.txt`
+- [ ] 6. Implement cluster locking mechanism
+  - [x] 6.1 Create `tools/cluster_lock.py` with DynamoDB-based locking
+    - Implement `acquire_lock(cluster_id, user_id)` using conditional write (`attribute_not_exists(cluster_id)`)
+    - Implement `release_lock(cluster_id, user_id)`
+    - Store `cluster_id` (partition key), `lock_holder`, `acquired_at` (ISO 8601), `ttl` (24h epoch)
+    - On lock failure: return holder identity and acquisition timestamp
+    - On release failure: log error but don't block (TTL safety net)
+    - DynamoDB table name: `redshift_modernization_locks`
+    - _Requirements: NFR-2.2, NFR-2.3_
+  - [x] 6.2 Write property test for cluster lock mutual exclusion
+    - **Property 16: Cluster lock mutual exclusion**
+    - **Validates: Requirements NFR-2.2**
+  - [x] 6.3 Write property test for lock denial response
+    - **Property 17: Lock denial includes holder identity and timestamp**
+    - **Validates: Requirements NFR-2.3**
+  - [x] 6.4 Write unit tests for cluster lock lifecycle
+    - Test acquire, release, contention, TTL, DynamoDB errors
+    - _Requirements: NFR-2.2, NFR-2.3_
 
-## 10. Documentation
-- [x] Task 10.1: Write project README with architecture overview, quick start, usage examples, and cost estimates
-  - File: `README.md`
-- [x] Task 10.2: Write deployment checklist with phases (build, local test, ECR push, Bedrock deploy, ATX registration, E2E test, monitoring, post-deploy)
-  - File: `src/redshift_agents/docs/deployment-checklist.md`
-- [x] Task 10.3: Write agent-specific README with detailed documentation
-  - File: `src/redshift_agents/README.md`
+- [ ] 7. Implement Assessment Agent
+  - [x] 7.1 Rewrite `subagents/assessment.py` using Strands Agent
+    - Define `ASSESSMENT_SYSTEM_PROMPT` covering: cluster discovery, WLM queue analysis, contention detection, structured JSON output
+    - Implement `create_agent(tools)` returning `Agent(system_prompt=..., tools=[list_redshift_clusters, analyze_redshift_cluster, get_cluster_metrics, get_wlm_configuration])`
+    - Add `BedrockAgentCoreApp` entry point for `agentcore launch`
+    - Agent must produce `AssessmentResult` structured output
+    - _Requirements: FR-2.1, FR-2.2, FR-2.3, FR-2.4, FR-2.5, FR-2.6, FR-2.7, FR-1.5_
+  - [x] 7.2 Write unit tests for assessment agent tool wiring
+    - Verify correct tools are passed to agent, system prompt contains key instructions
+    - _Requirements: FR-2.7_
 
-## 11. Fleet Audit Observability
-- [x] Task 11.1: Create `tools/audit_logger.py` with `emit_audit_event()` function that emits structured JSON to `redshift_modernization_audit` logger with `customer_account_id`, `agent_name`, `event_type`, `cluster_id`, `region`, `timestamp`, and optional `details`
-  - File: `src/redshift_agents/tools/audit_logger.py`
-- [x] Task 11.2: Add `emit_audit_event("tool_invocation", ...)` calls to each `@tool` function in `redshift_tools.py` before AWS API calls
-  - File: `src/redshift_agents/tools/redshift_tools.py`
-- [x] Task 11.3: Add `emit_audit_event("agent_start", ...)` calls to each agent factory function (orchestrator + 4 subagents)
-  - Files: `orchestrator.py`, `assessment.py`, `scoring.py`, `architecture.py`, `execution.py`
+- [ ] 8. Implement Architecture Agent
+  - [x] 8.1 Rewrite `subagents/architecture.py` using Strands Agent
+    - Define `ARCHITECTURE_SYSTEM_PROMPT` covering: WLM-to-workgroup mapping, 1:1 migration scenario, RPU sizing (min 32), three architecture patterns, cost estimates, structured JSON output
+    - Implement `create_agent(tools)` with tools: `get_wlm_configuration`, `execute_redshift_query`
+    - Add `BedrockAgentCoreApp` entry point
+    - Agent must produce `ArchitectureResult` structured output
+    - Support 1:1 migration when cluster is purpose-built (FR-3.2)
+    - _Requirements: FR-3.1, FR-3.2, FR-3.3, FR-3.4, FR-3.5, FR-3.6, FR-3.7, FR-1.5_
+  - [x] 8.2 Write property test for workgroup count mapping rules
+    - **Property 5: Workgroup count matches WLM queue mapping rules**
+    - **Validates: Requirements FR-3.1**
+  - [x] 8.3 Write property test for minimum RPU constraint
+    - **Property 6: All workgroup RPUs are at least 32**
+    - **Validates: Requirements FR-3.3**
+  - [x] 8.4 Write property test for architecture pattern validity
+    - **Property 7: Architecture pattern is one of three valid values**
+    - **Validates: Requirements FR-3.4**
+  - [x] 8.5 Write property test for architecture output completeness
+    - **Property 8: Architecture output includes cost estimates and migration complexity**
+    - **Validates: Requirements FR-3.5, FR-3.6**
+
+- [ ] 9. Implement Execution Agent
+  - [x] 9.1 Rewrite `subagents/execution.py` using Strands Agent
+    - Define `EXECUTION_SYSTEM_PROMPT` covering: namespace/workgroup creation, snapshot restore, data sharing setup, user migration, performance validation, rollback procedures, cutover planning
+    - Implement `create_agent(tools)` with tools: `execute_redshift_query`, `create_serverless_namespace`, `create_serverless_workgroup`, `restore_snapshot_to_serverless`, `setup_data_sharing`
+    - Add `BedrockAgentCoreApp` entry point
+    - Agent must produce `ExecutionResult` structured output
+    - _Requirements: FR-4.1, FR-4.2, FR-4.3, FR-4.4, FR-4.5, FR-4.6, FR-4.7, FR-1.5_
+  - [x] 9.2 Write property test for execution RPU matching
+    - **Property 9: Execution workgroup RPUs match architecture spec**
+    - **Validates: Requirements FR-4.1**
+  - [x] 9.3 Write property test for data sharing conditional logic
+    - **Property 10: Data sharing configured if and only if hub-and-spoke**
+    - **Validates: Requirements FR-4.3**
+  - [x] 9.4 Write property test for migration plan coverage
+    - **Property 11: Migration plan covers all source WLM queues**
+    - **Validates: Requirements FR-4.4**
+  - [x] 9.5 Write property test for rollback procedure completeness
+    - **Property 12: Every execution step has a rollback procedure**
+    - **Validates: Requirements FR-4.6**
+
+- [x] 10. Checkpoint — Ensure all agent tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 11. Implement Orchestrator with workflow, locking, and approval gates
+  - [x] 11.1 Rewrite `orchestrator/orchestrator.py` using Strands Agent
+    - Define `ORCHESTRATOR_SYSTEM_PROMPT` covering: 3-phase workflow (assessment → architecture → execution), approval gates between phases, cluster locking, identity propagation, subagent delegation logging
+    - Implement `create_agent(tools)` with orchestrator tools: `invoke_assessment`, `invoke_architecture`, `invoke_execution`, `acquire_lock`, `release_lock`
+    - Add `BedrockAgentCoreApp` entry point
+    - Orchestrator invokes subagents via Bedrock AgentCore `InvokeAgent` API
+    - Every invocation payload includes `cluster_id`, `region`, `customer_account_id`, `user_id`
+    - Reject requests missing `user_id` with clear error
+    - _Requirements: FR-1.1, FR-1.2, FR-1.3, FR-1.4, FR-6.1, FR-6.3, FR-6.5, NFR-1.1_
+  - [x] 11.2 Implement approval gate logic
+    - Orchestrator must not advance from phase N to phase N+1 without user approval
+    - Gate 1: assessment → architecture requires explicit approval
+    - Gate 2: architecture → execution requires explicit approval
+    - On rejection: inform user and offer to restart or modify
+    - _Requirements: FR-6.2, FR-6.4, FR-6.6_
+  - [x] 11.3 Wire cluster locking into orchestrator workflow
+    - Acquire lock at workflow start, release on completion or failure
+    - On lock denial: inform user who holds the lock and when it was acquired
+    - Release lock in error handlers (finally block)
+    - _Requirements: NFR-2.2, NFR-2.3_
+  - [x] 11.4 Implement subagent delegation audit logging
+    - Log every subagent invocation: which subagent, input payload, result summary
+    - Emit audit event with `event_type` containing subagent name
+    - _Requirements: FR-5.5_
+  - [x] 11.5 Write property test for approval gate enforcement
+    - **Property 15: Orchestrator does not advance phase without approval**
+    - **Validates: Requirements FR-6.2, FR-6.4, FR-6.6**
+  - [x] 11.6 Write property test for subagent delegation logging
+    - **Property 19: Orchestrator logs every subagent delegation**
+    - **Validates: Requirements FR-5.5**
+
+- [ ] 12. Update deployment configuration
+  - [x] 12.1 Remove Docker/ATX deployment artifacts
+    - Remove or replace Dockerfiles, docker-compose.yml, build-images.sh, deploy-with-finch.sh, push-to-ecr.sh
+    - Create `agentcore launch` deployment scripts or instructions for each agent
+    - _Requirements: NFR-3.1_
+  - [x] 12.2 Create per-agent IAM role policy documents
+    - Assessment: read-only Redshift (`redshift:Describe*`, `redshift-data:ExecuteStatement`) + CloudWatch read
+    - Architecture: read-only Redshift + CloudWatch read
+    - Execution: Redshift write (`redshift-serverless:Create*`, `redshift-serverless:Update*`, `redshift:RestoreFromClusterSnapshot`, `redshift-data:ExecuteStatement`) + Redshift read + CloudWatch read
+    - Orchestrator: DynamoDB read/write for locks + InvokeAgent for subagents
+    - Include session tag policy for identity propagation (`aws:PrincipalTag/user`)
+    - _Requirements: NFR-1.4, NFR-7.4_
+  - [x] 12.3 Update `.env.example` with new configuration
+    - Add `DYNAMODB_LOCK_TABLE`, agent names for AgentCore, region config
+    - Remove old ATX/Docker-specific variables
+    - _Requirements: NFR-3.2_
+
+- [ ] 13. Integration wiring and cross-cutting concerns
+  - [x] 13.1 Wire identity propagation end-to-end
+    - Ensure `user_id` flows: orchestrator → subagent payload → tool `user_id` param → audit `initiated_by` → Redshift Data API `DbUser`
+    - Verify IAM session tags include `PrincipalTag/user={user_id}`
+    - _Requirements: NFR-7.1, NFR-7.3, NFR-7.4, NFR-7.5, NFR-7.6_
+  - [x] 13.2 Implement cross-account log sharing opt-in
+    - During setup, prompt customer to opt-in to CloudWatch cross-account log sharing
+    - If opted in, configure CloudWatch Logs subscription filter for audit events
+    - Document that CloudTrail captures API calls regardless of opt-in
+    - _Requirements: NFR-6.3, NFR-6.4, NFR-6.5_
+  - [x] 13.3 Update README and documentation
+    - Update README with new architecture (Strands Agent, no Docker, agentcore launch)
+    - Document 3-phase workflow with approval gates
+    - Document cluster locking behavior
+    - Document identity propagation chain
+    - _Requirements: FR-1.1_
+
+- [x] 14. Final checkpoint — Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation
+- Property tests (Properties 1–19) use `hypothesis` with `@settings(max_examples=100)`
+- All tools follow the error pattern: catch exceptions, return `{"error": ...}`, never raise
+- The old scoring agent (section 4 of old tasks) is removed entirely
+- Deployment shifts from Docker/ATX to `agentcore launch` with per-agent IAM roles

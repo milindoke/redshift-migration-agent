@@ -1,88 +1,141 @@
 """
 Structured audit logger for Redshift Modernization Agents.
 
-Emits JSON-structured log events to CloudWatch Logs with a consistent schema
-so the Redshift Service Team can query agent usage across the fleet using
+Emits JSON-structured log events to a dedicated ``redshift_modernization_audit``
+logger so the Redshift Service Team can query agent usage across the fleet using
 CloudWatch Logs Insights.
 
-All log events include:
-- customer_account_id: Which customer account is using the agent
-- agent_name: Which agent emitted the event
-- event_type: Category of event (workflow_start, tool_invocation, phase_complete, etc.)
-- cluster_id: Target Redshift cluster (when applicable)
-- region: AWS region
-- timestamp: ISO 8601 timestamp
+Every audit event includes identity propagation (``initiated_by``) so the full
+chain from user → agent → tool → Redshift is traceable.
 
-The Redshift Service Team can query fleet-wide usage with CloudWatch Logs Insights:
+Example CloudWatch Logs Insights query::
 
-    fields @timestamp, customer_account_id, agent_name, event_type, cluster_id
+    fields @timestamp, customer_account_id, agent_name, event_type, initiated_by
     | filter event_type = "workflow_start"
     | stats count() by customer_account_id
     | sort count desc
 
-CloudTrail automatically captures the underlying Redshift/CloudWatch API calls
-(DescribeClusters, GetMetricStatistics) with the caller's account ID. This audit
-logger adds the agent-level context on top of that.
+Requirements: FR-5.4, NFR-6.1, NFR-6.2, NFR-6.6, NFR-7.2
 """
-import json
+from __future__ import annotations
+
 import logging
 import os
+import sys
+from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
 
+try:
+    # python-json-logger v4+
+    from pythonjsonlogger.json import JsonFormatter
+except ImportError:
+    # python-json-logger v2/v3
+    from pythonjsonlogger import jsonlogger
 
-# Use a dedicated logger name so CloudWatch log group filtering is easy
+    JsonFormatter = jsonlogger.JsonFormatter
+
+from ..models import AuditEvent
+
+# Valid event types per NFR-6.6
+VALID_EVENT_TYPES = frozenset(
+    {
+        "agent_start",
+        "tool_invocation",
+        "workflow_start",
+        "workflow_complete",
+        "phase_start",
+        "phase_complete",
+        "error",
+    }
+)
+
+# ---------------------------------------------------------------------------
+# Logger setup — dedicated logger with JSON formatter
+# ---------------------------------------------------------------------------
+
 _logger = logging.getLogger("redshift_modernization_audit")
 
+if not _logger.handlers:
+    _handler = logging.StreamHandler()
+    _formatter = JsonFormatter(
+        fmt="%(timestamp)s %(event_type)s %(agent_name)s %(customer_account_id)s "
+        "%(initiated_by)s %(cluster_id)s %(region)s",
+        timestamp=False,  # we supply our own ISO 8601 timestamp
+    )
+    _handler.setFormatter(_formatter)
+    _logger.addHandler(_handler)
+    _logger.setLevel(logging.INFO)
 
-def _get_account_id() -> str:
-    """Best-effort account ID from environment or STS."""
-    acct = os.getenv("AWS_ACCOUNT_ID", "")
-    if acct:
-        return acct
+
+# ---------------------------------------------------------------------------
+# Account ID resolution (best-effort)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_account_id(provided: str) -> str:
+    """Return *provided* if non-empty, else env var, else STS, else 'unknown'."""
+    if provided:
+        return provided
+
+    env_val = os.getenv("AWS_ACCOUNT_ID", "")
+    if env_val:
+        return env_val
+
     try:
         import boto3
+
         return boto3.client("sts").get_caller_identity()["Account"]
     except Exception:
         return "unknown"
 
 
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
 def emit_audit_event(
     event_type: str,
     agent_name: str,
-    *,
-    customer_account_id: Optional[str] = None,
-    cluster_id: Optional[str] = None,
-    region: Optional[str] = None,
-    workflow_phase: Optional[str] = None,
-    details: Optional[Dict[str, Any]] = None,
+    customer_account_id: str = "",
+    initiated_by: str = "",
+    cluster_id: str = "",
+    region: str = "",
+    details: dict | None = None,
 ) -> None:
-    """
-    Emit a structured audit log event.
+    """Emit a structured JSON audit event.
+
+    Failures are caught and logged to *stderr* so they never block the main
+    workflow (NFR-6.1).
 
     Args:
-        event_type: One of: agent_start, workflow_start, workflow_complete,
-                    tool_invocation, tool_result, phase_start, phase_complete,
-                    scoring_result, error
-        agent_name: e.g. "orchestrator", "assessment", "scoring", etc.
-        customer_account_id: The customer account using the agent.
+        event_type: One of ``VALID_EVENT_TYPES``.
+        agent_name: Agent that emitted the event (e.g. ``"assessment"``).
+        customer_account_id: AWS account ID; resolved automatically if empty.
+        initiated_by: ``user_id`` of the person who triggered the workflow.
         cluster_id: Target Redshift cluster identifier.
-        region: AWS region.
-        workflow_phase: Current workflow phase (assessment, scoring, architecture, execution).
-        details: Arbitrary key-value pairs for event-specific data.
+        region: AWS region of the target cluster.
+        details: Arbitrary event-specific payload.
     """
-    event = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event_type": event_type,
-        "agent_name": agent_name,
-        "customer_account_id": customer_account_id or _get_account_id(),
-        "cluster_id": cluster_id or "",
-        "region": region or os.getenv("AWS_REGION", "us-east-2"),
-    }
-    if workflow_phase:
-        event["workflow_phase"] = workflow_phase
-    if details:
-        event["details"] = details
+    try:
+        event = AuditEvent(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            event_type=event_type,
+            agent_name=agent_name,
+            customer_account_id=_resolve_account_id(customer_account_id),
+            initiated_by=initiated_by,
+            cluster_id=cluster_id,
+            region=region or os.getenv("AWS_REGION", "us-east-2"),
+            details=details or {},
+        )
 
-    # Emit as a single JSON line — CloudWatch Logs Insights can parse this natively
-    _logger.info(json.dumps(event, default=str))
+        _logger.info("audit_event", extra=asdict(event))
+    except Exception:
+        # Audit failures must never block the main workflow (NFR-6.1)
+        logging.getLogger(__name__).error(
+            "Failed to emit audit event", exc_info=True, extra={"stream": "stderr"}
+        )
+        print(
+            f"[audit_logger] Failed to emit audit event: event_type={event_type}",
+            file=sys.stderr,
+        )

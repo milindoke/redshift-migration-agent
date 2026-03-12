@@ -1,0 +1,4 @@
+# file: /Users/milindo/Library/CloudStorage/OneDrive-amazon.com/KiroProjects/migrateRedshiftProvisionedToServerless/src/redshift_agents/tools/cluster_lock.py
+# hypothesis_version: 6.151.9
+
+[':holder', 'Code', 'DYNAMODB_LOCK_TABLE', 'Error', 'Item', 'N', 'S', 'acquired', 'acquired_at', 'cluster_id', 'dynamodb', 'error', 'lock_holder', 'region', 'released', 'ttl', 'unknown', 'us-east-2']

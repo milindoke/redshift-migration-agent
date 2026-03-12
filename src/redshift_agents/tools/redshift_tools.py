@@ -3,6 +3,10 @@ Redshift analysis tools using Strands @tool decorator.
 
 These tools will be available to subagents for cluster analysis.
 """
+from __future__ import annotations
+
+import time
+
 import boto3
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -13,13 +17,14 @@ from .audit_logger import emit_audit_event
 
 
 @tool
-def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-2") -> Dict:
+def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-2", user_id: str = "") -> Dict:
     """
     Analyze Redshift cluster configuration and return detailed assessment.
     
     Args:
         cluster_id: Redshift cluster identifier
         region: AWS region where cluster is located (default: us-east-2)
+        user_id: Identity of the person who initiated the request (for audit traceability)
         
     Returns:
         Dictionary with comprehensive cluster configuration details including:
@@ -34,6 +39,7 @@ def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-2") -> Dict
     emit_audit_event(
         "tool_invocation",
         "assessment",
+        initiated_by=user_id,
         cluster_id=cluster_id,
         region=region,
         details={"tool": "analyze_redshift_cluster"},
@@ -97,7 +103,8 @@ def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-2") -> Dict
 def get_cluster_metrics(
     cluster_id: str,
     region: str = "us-east-2",
-    hours: int = 24
+    hours: int = 24,
+    user_id: str = "",
 ) -> Dict:
     """
     Get CloudWatch metrics for Redshift cluster performance analysis.
@@ -106,6 +113,7 @@ def get_cluster_metrics(
         cluster_id: Redshift cluster identifier
         region: AWS region where cluster is located
         hours: Number of hours of historical data to retrieve (default: 24)
+        user_id: Identity of the person who initiated the request (for audit traceability)
         
     Returns:
         Dictionary with performance metrics including:
@@ -120,6 +128,7 @@ def get_cluster_metrics(
     emit_audit_event(
         "tool_invocation",
         "assessment",
+        initiated_by=user_id,
         cluster_id=cluster_id,
         region=region,
         details={"tool": "get_cluster_metrics", "hours": hours},
@@ -190,14 +199,16 @@ def get_cluster_metrics(
         }
 
 
+
 @tool
-def list_redshift_clusters(region: str = "us-east-2") -> List[Dict]:
+def list_redshift_clusters(region: str = "us-east-2", user_id: str = "") -> List[Dict] | Dict:
     """
     List all Redshift clusters in the specified region.
-    
+
     Args:
         region: AWS region to list clusters from (default: us-east-2)
-        
+        user_id: Identity of the person who initiated the request (for audit traceability)
+
     Returns:
         List of dictionaries with basic cluster information for each cluster:
         - Cluster identifier
@@ -206,18 +217,19 @@ def list_redshift_clusters(region: str = "us-east-2") -> List[Dict]:
         - Creation time
     """
     redshift = boto3.client('redshift', region_name=region)
-    
+
     emit_audit_event(
         "tool_invocation",
         "assessment",
+        initiated_by=user_id,
         region=region,
         details={"tool": "list_redshift_clusters"},
     )
-    
+
     try:
         response = redshift.describe_clusters()
         clusters = response.get('Clusters', [])
-        
+
         cluster_list = []
         for cluster in clusters:
             cluster_list.append({
@@ -230,11 +242,472 @@ def list_redshift_clusters(region: str = "us-east-2") -> List[Dict]:
                 "encrypted": cluster.get('Encrypted', False),
                 "publicly_accessible": cluster.get('PubliclyAccessible', False),
             })
-        
+
         return cluster_list
-        
+
     except Exception as e:
-        return [{
+        return {
             "error": str(e),
             "region": region
-        }]
+        }
+
+
+@tool
+def get_wlm_configuration(
+    cluster_id: str,
+    region: str = "us-east-2",
+    user_id: str = "",
+) -> Dict:
+    """
+    Query WLM configuration and per-queue metrics via the Redshift Data API.
+
+    Args:
+        cluster_id: Redshift cluster identifier
+        region: AWS region where cluster is located (default: us-east-2)
+        user_id: Identity of the person who initiated the request (for audit traceability)
+
+    Returns:
+        Dictionary with per-queue WLM metrics including:
+        - queue_name, service_class, concurrency
+        - queries_waiting, avg_wait_time_ms, avg_exec_time_ms
+        - wait_to_exec_ratio, queries_spilling_to_disk, disk_spill_mb
+        - saturation_pct
+    """
+    redshift_data = boto3.client('redshift-data', region_name=region)
+
+    emit_audit_event(
+        "tool_invocation",
+        "assessment",
+        initiated_by=user_id,
+        cluster_id=cluster_id,
+        region=region,
+        details={"tool": "get_wlm_configuration"},
+    )
+
+    sql = (
+        "SELECT "
+        "trim(name) as queue_name, "
+        "service_class, "
+        "num_query_tasks as concurrency, "
+        "0 as queries_waiting, "
+        "0 as avg_wait_time_ms, "
+        "0 as avg_exec_time_ms, "
+        "0.0 as wait_to_exec_ratio, "
+        "0 as queries_spilling_to_disk, "
+        "0.0 as disk_spill_mb, "
+        "0.0 as saturation_pct "
+        "FROM STV_WLM_SERVICE_CLASS_CONFIG "
+        "WHERE service_class > 4"
+    )
+
+    try:
+        # Step 1: Execute the statement via Redshift Data API
+        exec_resp = redshift_data.execute_statement(
+            ClusterIdentifier=cluster_id,
+            Database='dev',
+            DbUser=user_id,
+            Sql=sql,
+        )
+        statement_id = exec_resp['Id']
+
+        # Step 2: Poll until the statement finishes
+        max_wait_seconds = 30
+        elapsed = 0
+        while elapsed < max_wait_seconds:
+            desc = redshift_data.describe_statement(Id=statement_id)
+            status = desc['Status']
+            if status == 'FINISHED':
+                break
+            if status == 'FAILED':
+                return {
+                    "error": desc.get('Error', 'Query failed'),
+                    "cluster_id": cluster_id,
+                    "region": region,
+                }
+            time.sleep(1)
+            elapsed += 1
+
+        if elapsed >= max_wait_seconds:
+            return {
+                "error": "Query timed out waiting for completion",
+                "cluster_id": cluster_id,
+                "region": region,
+            }
+
+        # Step 3: Fetch results
+        result_resp = redshift_data.get_statement_result(Id=statement_id)
+        records = result_resp.get('Records', [])
+
+        queues = []
+        for row in records:
+            queues.append({
+                "queue_name": row[0].get('stringValue', ''),
+                "service_class": int(row[1].get('longValue', row[1].get('stringValue', 0))),
+                "concurrency": int(row[2].get('longValue', row[2].get('stringValue', 0))),
+                "queries_waiting": int(row[3].get('longValue', row[3].get('stringValue', 0))),
+                "avg_wait_time_ms": float(row[4].get('longValue', row[4].get('doubleValue', row[4].get('stringValue', 0)))),
+                "avg_exec_time_ms": float(row[5].get('longValue', row[5].get('doubleValue', row[5].get('stringValue', 0)))),
+                "wait_to_exec_ratio": float(row[6].get('doubleValue', row[6].get('stringValue', 0.0))),
+                "queries_spilling_to_disk": int(row[7].get('longValue', row[7].get('stringValue', 0))),
+                "disk_spill_mb": float(row[8].get('doubleValue', row[8].get('stringValue', 0.0))),
+                "saturation_pct": float(row[9].get('doubleValue', row[9].get('stringValue', 0.0))),
+            })
+
+        return {
+            "cluster_id": cluster_id,
+            "region": region,
+            "wlm_queues": queues,
+            "timestamp": str(datetime.utcnow()),
+        }
+
+    except Exception as e:
+        return {
+            "error": str(e),
+            "cluster_id": cluster_id,
+            "region": region,
+        }
+
+@tool
+def create_serverless_namespace(
+    namespace_name: str,
+    admin_username: str = "admin",
+    db_name: str = "dev",
+    region: str = "us-east-2",
+    user_id: str = "",
+) -> Dict:
+    """
+    Create a Redshift Serverless namespace.
+
+    Args:
+        namespace_name: Name for the new Serverless namespace
+        admin_username: Admin user for the namespace (default: admin)
+        db_name: Default database name (default: dev)
+        region: AWS region where the namespace will be created (default: us-east-2)
+        user_id: Identity of the person who initiated the request (for audit traceability)
+
+    Returns:
+        Dictionary with namespace details on success, or an error dict on failure.
+    """
+    client = boto3.client('redshift-serverless', region_name=region)
+
+    emit_audit_event(
+        "tool_invocation",
+        "execution",
+        initiated_by=user_id,
+        region=region,
+        details={"tool": "create_serverless_namespace"},
+    )
+
+    try:
+        response = client.create_namespace(
+            namespaceName=namespace_name,
+            adminUsername=admin_username,
+            dbName=db_name,
+        )
+        namespace = response.get("namespace", {})
+        return {
+            "namespace_name": namespace.get("namespaceName"),
+            "namespace_id": namespace.get("namespaceId"),
+            "namespace_arn": namespace.get("namespaceArn"),
+            "status": namespace.get("status"),
+            "admin_username": namespace.get("adminUsername"),
+            "db_name": namespace.get("dbName"),
+            "region": region,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "namespace_name": namespace_name,
+            "region": region,
+        }
+
+
+@tool
+def create_serverless_workgroup(
+    workgroup_name: str,
+    namespace_name: str,
+    base_rpu: int = 32,
+    max_rpu: int = 512,
+    region: str = "us-east-2",
+    user_id: str = "",
+) -> Dict:
+    """
+    Create a Redshift Serverless workgroup.
+
+    Args:
+        workgroup_name: Name for the new Serverless workgroup
+        namespace_name: Name of the namespace to associate the workgroup with
+        base_rpu: Base Redshift Processing Units (default: 32)
+        max_rpu: Maximum Redshift Processing Units (default: 512)
+        region: AWS region where the workgroup will be created (default: us-east-2)
+        user_id: Identity of the person who initiated the request (for audit traceability)
+
+    Returns:
+        Dictionary with workgroup details on success, or an error dict on failure.
+    """
+    client = boto3.client('redshift-serverless', region_name=region)
+
+    emit_audit_event(
+        "tool_invocation",
+        "execution",
+        initiated_by=user_id,
+        region=region,
+        details={"tool": "create_serverless_workgroup"},
+    )
+
+    try:
+        response = client.create_workgroup(
+            workgroupName=workgroup_name,
+            namespaceName=namespace_name,
+            baseCapacity=base_rpu,
+            maxCapacity=max_rpu,
+        )
+        workgroup = response.get("workgroup", {})
+        return {
+            "workgroup_name": workgroup.get("workgroupName"),
+            "workgroup_id": workgroup.get("workgroupId"),
+            "workgroup_arn": workgroup.get("workgroupArn"),
+            "status": workgroup.get("status"),
+            "namespace_name": workgroup.get("namespaceName"),
+            "base_capacity": workgroup.get("baseCapacity"),
+            "max_capacity": workgroup.get("maxCapacity"),
+            "region": region,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "workgroup_name": workgroup_name,
+            "region": region,
+        }
+
+
+@tool
+def execute_redshift_query(
+    cluster_id: str,
+    query: str,
+    region: str = "us-east-2",
+    user_id: str = "",
+) -> Dict:
+    """
+    Execute a SQL query against a Redshift cluster via the Redshift Data API.
+
+    Identity propagation: the initiator's identity is passed as ``DbUser``
+    so Redshift audit logs attribute the query to the individual, not just
+    the IAM role (FR-5.3, NFR-7.1, NFR-7.3).
+
+    Args:
+        cluster_id: Redshift cluster identifier
+        query: SQL query to execute
+        region: AWS region where cluster is located (default: us-east-2)
+        user_id: Identity of the person who initiated the request (for audit traceability)
+
+    Returns:
+        Dictionary with ``records`` key containing the query results, or
+        ``error`` key on failure.
+    """
+    redshift_data = boto3.client('redshift-data', region_name=region)
+
+    emit_audit_event(
+        "tool_invocation",
+        "execution",
+        initiated_by=user_id,
+        cluster_id=cluster_id,
+        region=region,
+        details={"tool": "execute_redshift_query", "query": query},
+    )
+
+    try:
+        # Step 1: Execute the statement via Redshift Data API
+        exec_resp = redshift_data.execute_statement(
+            ClusterIdentifier=cluster_id,
+            Database='dev',
+            DbUser=user_id,
+            Sql=query,
+        )
+        statement_id = exec_resp['Id']
+
+        # Step 2: Poll until the statement finishes
+        max_wait_seconds = 30
+        elapsed = 0
+        while elapsed < max_wait_seconds:
+            desc = redshift_data.describe_statement(Id=statement_id)
+            status = desc['Status']
+            if status == 'FINISHED':
+                break
+            if status == 'FAILED':
+                return {
+                    "error": desc.get('Error', 'Query failed'),
+                    "cluster_id": cluster_id,
+                    "region": region,
+                }
+            time.sleep(1)
+            elapsed += 1
+
+        if elapsed >= max_wait_seconds:
+            return {
+                "error": "Query timed out waiting for completion",
+                "cluster_id": cluster_id,
+                "region": region,
+            }
+
+        # Step 3: Fetch results
+        result_resp = redshift_data.get_statement_result(Id=statement_id)
+        records = result_resp.get('Records', [])
+
+        return {
+            "cluster_id": cluster_id,
+            "region": region,
+            "records": records,
+        }
+
+    except Exception as e:
+        return {
+            "error": str(e),
+            "cluster_id": cluster_id,
+            "region": region,
+        }
+
+@tool
+def setup_data_sharing(
+    producer_namespace: str,
+    consumer_namespaces: str,
+    datashare_name: str = "default_share",
+    region: str = "us-east-2",
+    user_id: str = "",
+) -> Dict:
+    """
+    Set up data sharing between a producer namespace and one or more consumer namespaces.
+
+    Creates a datashare on the producer, adds the public schema and all its tables,
+    then grants usage to each consumer namespace.
+
+    Args:
+        producer_namespace: Name of the producer Serverless namespace
+        consumer_namespaces: Comma-separated list of consumer namespace names
+        datashare_name: Name for the datashare (default: default_share)
+        region: AWS region (default: us-east-2)
+        user_id: Identity of the person who initiated the request (for audit traceability)
+
+    Returns:
+        Dictionary with datashare details on success, or an error dict on failure.
+    """
+    emit_audit_event(
+        "tool_invocation",
+        "execution",
+        initiated_by=user_id,
+        region=region,
+        details={"tool": "setup_data_sharing"},
+    )
+
+    try:
+        serverless_client = boto3.client('redshift-serverless', region_name=region)
+        redshift_data_client = boto3.client('redshift-data', region_name=region)
+
+        # Resolve producer namespace ID
+        producer_resp = serverless_client.get_namespace(namespaceName=producer_namespace)
+        producer_ns = producer_resp.get("namespace", {})
+        producer_ns_id = producer_ns.get("namespaceId", "")
+
+        # Resolve consumer namespace IDs
+        consumer_names = [n.strip() for n in consumer_namespaces.split(",") if n.strip()]
+        consumer_ns_ids = []
+        for name in consumer_names:
+            resp = serverless_client.get_namespace(namespaceName=name)
+            ns = resp.get("namespace", {})
+            consumer_ns_ids.append({
+                "name": name,
+                "namespace_id": ns.get("namespaceId", ""),
+            })
+
+        # Execute SQL statements to create datashare and grant access
+        sql_statements = [
+            f"CREATE DATASHARE {datashare_name}",
+            f"ALTER DATASHARE {datashare_name} ADD SCHEMA public",
+            f"ALTER DATASHARE {datashare_name} ADD ALL TABLES IN SCHEMA public",
+        ]
+        for consumer in consumer_ns_ids:
+            sql_statements.append(
+                f"GRANT USAGE ON DATASHARE {datashare_name} TO NAMESPACE '{consumer['namespace_id']}'"
+            )
+
+        executed_statements = []
+        for sql in sql_statements:
+            exec_resp = redshift_data_client.execute_statement(
+                WorkgroupName=producer_namespace,
+                Database='dev',
+                Sql=sql,
+            )
+            executed_statements.append({
+                "sql": sql,
+                "statement_id": exec_resp.get("Id", ""),
+            })
+
+        return {
+            "datashare_name": datashare_name,
+            "producer_namespace": producer_namespace,
+            "producer_namespace_id": producer_ns_id,
+            "consumer_namespaces": consumer_ns_ids,
+            "statements_executed": len(executed_statements),
+            "region": region,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "producer_namespace": producer_namespace,
+            "region": region,
+        }
+
+
+@tool
+def restore_snapshot_to_serverless(
+    snapshot_identifier: str,
+    namespace_name: str,
+    region: str = "us-east-2",
+    user_id: str = "",
+) -> Dict:
+    """
+    Restore a Redshift cluster snapshot into a Serverless namespace.
+
+    Args:
+        snapshot_identifier: Identifier of the cluster snapshot to restore
+        namespace_name: Target Serverless namespace name
+        region: AWS region where the Serverless namespace resides (default: us-east-2)
+        user_id: Identity of the person who initiated the request (for audit traceability)
+
+    Returns:
+        Dictionary with restore details on success, or an error dict on failure.
+    """
+    client = boto3.client('redshift-serverless', region_name=region)
+
+    emit_audit_event(
+        "tool_invocation",
+        "execution",
+        initiated_by=user_id,
+        region=region,
+        details={"tool": "restore_snapshot_to_serverless"},
+    )
+
+    try:
+        response = client.restore_from_snapshot(
+            namespaceName=namespace_name,
+            snapshotName=snapshot_identifier,
+        )
+        namespace = response.get("namespace", {})
+        return {
+            "namespace_name": namespace.get("namespaceName"),
+            "namespace_id": namespace.get("namespaceId"),
+            "namespace_arn": namespace.get("namespaceArn"),
+            "status": namespace.get("status"),
+            "snapshot_identifier": snapshot_identifier,
+            "region": region,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "snapshot_identifier": snapshot_identifier,
+            "namespace_name": namespace_name,
+            "region": region,
+        }
+
+
+

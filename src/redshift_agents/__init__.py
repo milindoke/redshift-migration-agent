@@ -1,8 +1,8 @@
 """
-Redshift Modernization Agents using ATX BaseAgent SDK.
+Redshift Modernization Agents using Strands Agent + Bedrock AgentCore.
 
-This package contains the orchestrator and subagents for comprehensive
-Redshift cluster modernization.
+Orchestrator + 3 subagents (assessment, architecture, execution) for
+migrating Redshift Provisioned clusters to Serverless.
 """
 
 __version__ = "1.0.0"
