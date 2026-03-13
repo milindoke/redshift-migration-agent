@@ -1,7 +1,8 @@
 """
 Subagents for Redshift modernization tasks.
 
-Each subagent specializes in a specific aspect of the modernization workflow:
+Each subagent module contains a system prompt constant used by the CDK stack
+to configure the corresponding Bedrock Agent:
 - Assessment: Cluster discovery, WLM queue analysis, CloudWatch metrics
 - Architecture: Workgroup split design, RPU sizing, cost estimates
 - Execution: Namespace/workgroup creation, snapshot restore, migration
@@ -10,12 +11,12 @@ Each subagent specializes in a specific aspect of the modernization workflow:
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .assessment import create_agent as create_assessment_agent
-    from .architecture import create_agent as create_architecture_agent
-    from .execution import create_agent as create_execution_agent
+    from .assessment import ASSESSMENT_SYSTEM_PROMPT
+    from .architecture import ARCHITECTURE_SYSTEM_PROMPT
+    from .execution import EXECUTION_SYSTEM_PROMPT
 
 __all__ = [
-    "create_assessment_agent",
-    "create_architecture_agent",
-    "create_execution_agent",
+    "ASSESSMENT_SYSTEM_PROMPT",
+    "ARCHITECTURE_SYSTEM_PROMPT",
+    "EXECUTION_SYSTEM_PROMPT",
 ]

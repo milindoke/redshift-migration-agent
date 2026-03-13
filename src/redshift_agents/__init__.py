@@ -1,5 +1,5 @@
 """
-Redshift Modernization Agents using Strands Agent + Bedrock AgentCore.
+Redshift Modernization Agents using Amazon Bedrock Agents.
 
 Orchestrator + 3 subagents (assessment, architecture, execution) for
 migrating Redshift Provisioned clusters to Serverless.

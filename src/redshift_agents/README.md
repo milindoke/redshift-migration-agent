@@ -40,24 +40,39 @@ All agents run within the customer account. No cross-account dependencies. Custo
 
 ## Quick Start
 
-### 1. Deploy Agents to Bedrock AgentCore
+### 1. Deploy Subagents to Bedrock AgentCore
 
 ```bash
 cd src/redshift_agents
 ./deploy-agentcore.sh
 ```
 
-This runs `agentcore launch` for each agent (orchestrator + 3 subagents).
+This runs `agentcore launch` for each subagent (assessment, architecture, execution).
 
-### 2. Launch the Chat UI
+### 2. Set Up Multi-Agent Collaboration
+
+Create the Bedrock supervisor agent and wire it to the subagents:
+
+```bash
+python setup_multi_agent.py \
+    --supervisor-role-arn arn:aws:iam::ACCOUNT:role/redshift-supervisor \
+    --assessment-alias-arn arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID \
+    --architecture-alias-arn arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID \
+    --execution-alias-arn arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID
+```
+
+This creates a Bedrock supervisor agent that uses native multi-agent collaboration to route tasks to the appropriate subagent.
+
+### 3. Launch the Chat UI
 
 ```bash
 pip install -r ui/requirements.txt
-export ORCHESTRATOR_AGENT_ID=<your-agent-id>
+export ORCHESTRATOR_AGENT_ID=<supervisor-agent-id>
+export ORCHESTRATOR_AGENT_ALIAS_ID=<supervisor-alias-id>
 streamlit run ui/app.py
 ```
 
-Opens a chat interface at `http://localhost:8501` where you can interact with the orchestrator conversationally.
+Opens a chat interface at `http://localhost:8501` where you can interact with the supervisor conversationally.
 
 ### Run Unit Tests (no AWS credentials needed)
 
@@ -167,7 +182,7 @@ IAM policy files are in `iam/`.
 ```
 src/redshift_agents/
 ├── orchestrator/
-│   └── orchestrator.py          # Orchestrator agent (workflow, locking, gates)
+│   └── orchestrator.py          # Strands orchestrator (fallback, standalone mode)
 ├── subagents/
 │   ├── assessment.py            # Cluster analysis + WLM queue metrics
 │   ├── architecture.py          # Workgroup split design + RPU sizing
@@ -183,17 +198,9 @@ src/redshift_agents/
 │   └── README.md                # UI setup instructions
 ├── iam/                         # Per-agent IAM policy documents
 ├── tests/                       # Unit tests (pytest, no AWS creds needed)
-│   ├── conftest.py
-│   ├── test_redshift_tools.py
-│   ├── test_assessment.py
-│   ├── test_architecture.py
-│   ├── test_execution.py
-│   ├── test_orchestrator.py
-│   ├── test_cluster_lock.py
-│   ├── test_audit_logger.py
-│   └── requirements-test.txt
 ├── models.py                    # Data models (dataclasses)
-├── deploy-agentcore.sh          # Deploy all agents via agentcore launch
+├── setup_multi_agent.py         # Create Bedrock supervisor + wire collaborators
+├── deploy-agentcore.sh          # Deploy subagents via agentcore launch
 ├── requirements.txt
 └── .env.example
 ```

@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 env/
 *.egg-info/
 dist/
@@ -18,6 +19,9 @@ lambda_deployment.zip
 response.json
 .agent-credentials
 packaged.yaml
+
+# CDK
+cdk.out/
 
 # Deployment artifacts
 src/redshift_agents/packages/
@@ -49,3 +53,4 @@ deploy_final.log
 *.temp
 test_response.json
 reorganize.sh
+.hypothesis/

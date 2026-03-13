@@ -1,0 +1,298 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Execution Tools",
+    "description": "Redshift execution tools for running queries, creating Serverless resources, restoring snapshots, and setting up data sharing.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/executeRedshiftQuery": {
+      "post": {
+        "operationId": "executeRedshiftQuery",
+        "summary": "Execute SQL query via Redshift Data API",
+        "description": "Executes a SQL query against a Redshift cluster using the Redshift Data API with identity propagation via DbUser.",
+        "parameters": [
+          {
+            "name": "cluster_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Redshift cluster identifier"
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "SQL query to execute"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "us-east-1" },
+            "description": "AWS region where cluster is located (default: us-east-1)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identity of the person who initiated the request, used for audit traceability"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query results or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "type": "object", "description": "Query result with records" },
+                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/createServerlessNamespace": {
+      "post": {
+        "operationId": "createServerlessNamespace",
+        "summary": "Create a Redshift Serverless namespace",
+        "description": "Creates a new Redshift Serverless namespace with the specified admin user and database name.",
+        "parameters": [
+          {
+            "name": "namespace_name",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Name for the new Serverless namespace"
+          },
+          {
+            "name": "admin_username",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "admin" },
+            "description": "Admin user for the namespace (default: admin)"
+          },
+          {
+            "name": "db_name",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "dev" },
+            "description": "Default database name (default: dev)"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "us-east-1" },
+            "description": "AWS region where the namespace will be created (default: us-east-1)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identity of the person who initiated the request, used for audit traceability"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Namespace details or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "type": "object", "description": "Namespace creation details" },
+                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/createServerlessWorkgroup": {
+      "post": {
+        "operationId": "createServerlessWorkgroup",
+        "summary": "Create a Redshift Serverless workgroup",
+        "description": "Creates a new Redshift Serverless workgroup associated with an existing namespace, with configurable RPU capacity.",
+        "parameters": [
+          {
+            "name": "workgroup_name",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Name for the new Serverless workgroup"
+          },
+          {
+            "name": "namespace_name",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Name of the namespace to associate the workgroup with"
+          },
+          {
+            "name": "base_rpu",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 32 },
+            "description": "Base Redshift Processing Units (default: 32)"
+          },
+          {
+            "name": "max_rpu",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 512 },
+            "description": "Maximum Redshift Processing Units (default: 512)"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "us-east-1" },
+            "description": "AWS region where the workgroup will be created (default: us-east-1)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identity of the person who initiated the request, used for audit traceability"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workgroup details or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "type": "object", "description": "Workgroup creation details" },
+                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/restoreSnapshotToServerless": {
+      "post": {
+        "operationId": "restoreSnapshotToServerless",
+        "summary": "Restore a cluster snapshot into a Serverless namespace",
+        "description": "Restores a Redshift cluster snapshot into an existing Serverless namespace for migration purposes.",
+        "parameters": [
+          {
+            "name": "snapshot_identifier",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identifier of the cluster snapshot to restore"
+          },
+          {
+            "name": "namespace_name",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Target Serverless namespace name"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "us-east-1" },
+            "description": "AWS region where the Serverless namespace resides (default: us-east-1)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identity of the person who initiated the request, used for audit traceability"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restore details or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "type": "object", "description": "Snapshot restore details" },
+                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/setupDataSharing": {
+      "post": {
+        "operationId": "setupDataSharing",
+        "summary": "Set up data sharing between producer and consumer namespaces",
+        "description": "Creates a datashare on the producer namespace, adds the public schema and all tables, then grants usage to each consumer namespace.",
+        "parameters": [
+          {
+            "name": "producer_namespace",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Name of the producer Serverless namespace"
+          },
+          {
+            "name": "consumer_namespaces",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Comma-separated list of consumer namespace names"
+          },
+          {
+            "name": "datashare_name",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "default_share" },
+            "description": "Name for the datashare (default: default_share)"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "us-east-1" },
+            "description": "AWS region (default: us-east-1)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identity of the person who initiated the request, used for audit traceability"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Data sharing details or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "type": "object", "description": "Data sharing configuration details" },
+                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

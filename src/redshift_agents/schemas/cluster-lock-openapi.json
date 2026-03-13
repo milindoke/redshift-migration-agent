@@ -1,0 +1,129 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Cluster Lock",
+    "description": "DynamoDB-based cluster-level locking to prevent concurrent operations on the same Redshift cluster.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/acquireClusterLock": {
+      "post": {
+        "operationId": "acquireClusterLock",
+        "summary": "Acquire a cluster-level lock",
+        "description": "Attempts to acquire a DynamoDB-based lock for a Redshift cluster using a conditional write. Returns lock status including holder identity on contention.",
+        "parameters": [
+          {
+            "name": "cluster_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Redshift cluster identifier (DynamoDB partition key)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identity of the user requesting the lock"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "us-east-1" },
+            "description": "AWS region where the DynamoDB lock table resides (default: us-east-1)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lock acquisition result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "Lock result with acquired flag, holder identity, and timestamp",
+                      "properties": {
+                        "acquired": { "type": "boolean" },
+                        "cluster_id": { "type": "string" },
+                        "lock_holder": { "type": "string" },
+                        "acquired_at": { "type": "string" }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": { "type": "string", "description": "Error message" }
+                      },
+                      "required": ["error"]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/releaseClusterLock": {
+      "post": {
+        "operationId": "releaseClusterLock",
+        "summary": "Release a cluster-level lock",
+        "description": "Releases a previously acquired cluster lock. Only the current lock holder can release. Failures are non-blocking due to 24-hour TTL safety net.",
+        "parameters": [
+          {
+            "name": "cluster_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Redshift cluster identifier"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identity of the user releasing the lock"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "us-east-1" },
+            "description": "AWS region where the DynamoDB lock table resides (default: us-east-1)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lock release result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "Release result",
+                      "properties": {
+                        "released": { "type": "boolean" },
+                        "cluster_id": { "type": "string" }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "released": { "type": "boolean" },
+                        "error": { "type": "string", "description": "Error message" },
+                        "cluster_id": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

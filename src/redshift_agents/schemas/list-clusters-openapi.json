@@ -1,0 +1,48 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "List Clusters",
+    "description": "List Redshift clusters in a region.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/listRedshiftClusters": {
+      "get": {
+        "operationId": "listRedshiftClusters",
+        "summary": "List all Redshift clusters in a region",
+        "description": "Returns a list of all Redshift provisioned clusters in the specified AWS region with basic configuration details.",
+        "parameters": [
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "us-east-1" },
+            "description": "AWS region to list clusters from (default: us-east-1)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Identity of the person who initiated the request"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of clusters or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "type": "array", "items": { "type": "object" } },
+                    { "type": "object", "properties": { "error": { "type": "string" } }, "required": ["error"] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

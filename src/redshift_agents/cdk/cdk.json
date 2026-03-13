@@ -1,0 +1,6 @@
+{
+  "app": ".venv/bin/python3 app.py",
+  "context": {
+    "foundation_model": "us.anthropic.claude-sonnet-4-20250514-v1:0"
+  }
+}

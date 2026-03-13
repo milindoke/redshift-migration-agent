@@ -7,9 +7,8 @@ Coordinates the complete modernization process by delegating to specialized suba
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .orchestrator import create_agent, ORCHESTRATOR_SYSTEM_PROMPT
+    from .orchestrator import ORCHESTRATOR_SYSTEM_PROMPT
 
 __all__ = [
-    "create_agent",
     "ORCHESTRATOR_SYSTEM_PROMPT",
 ]

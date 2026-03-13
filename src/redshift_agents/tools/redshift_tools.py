@@ -1,7 +1,10 @@
 """
-Redshift analysis tools using Strands @tool decorator.
+Redshift analysis and execution tools.
 
-These tools will be available to subagents for cluster analysis.
+Plain Python functions that perform AWS API calls for cluster analysis,
+serverless resource creation, data sharing, and query execution.
+Each function accepts ``region`` and ``user_id`` for cross-region support
+and identity propagation.
 """
 from __future__ import annotations
 
@@ -11,19 +14,19 @@ import boto3
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from strands.tools import tool
+try:
+    from tools.audit_logger import emit_audit_event
+except ImportError:
+    from .audit_logger import emit_audit_event
 
-from .audit_logger import emit_audit_event
 
-
-@tool
-def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-2", user_id: str = "") -> Dict:
+def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-1", user_id: str = "") -> Dict:
     """
     Analyze Redshift cluster configuration and return detailed assessment.
     
     Args:
         cluster_id: Redshift cluster identifier
-        region: AWS region where cluster is located (default: us-east-2)
+        region: AWS region where cluster is located (default: us-east-1)
         user_id: Identity of the person who initiated the request (for audit traceability)
         
     Returns:
@@ -99,10 +102,9 @@ def analyze_redshift_cluster(cluster_id: str, region: str = "us-east-2", user_id
         }
 
 
-@tool
 def get_cluster_metrics(
     cluster_id: str,
-    region: str = "us-east-2",
+    region: str = "us-east-1",
     hours: int = 24,
     user_id: str = "",
 ) -> Dict:
@@ -200,13 +202,12 @@ def get_cluster_metrics(
 
 
 
-@tool
-def list_redshift_clusters(region: str = "us-east-2", user_id: str = "") -> List[Dict] | Dict:
+def list_redshift_clusters(region: str = "us-east-1", user_id: str = "") -> List[Dict] | Dict:
     """
     List all Redshift clusters in the specified region.
 
     Args:
-        region: AWS region to list clusters from (default: us-east-2)
+        region: AWS region to list clusters from (default: us-east-1)
         user_id: Identity of the person who initiated the request (for audit traceability)
 
     Returns:
@@ -252,10 +253,9 @@ def list_redshift_clusters(region: str = "us-east-2", user_id: str = "") -> List
         }
 
 
-@tool
 def get_wlm_configuration(
     cluster_id: str,
-    region: str = "us-east-2",
+    region: str = "us-east-1",
     user_id: str = "",
 ) -> Dict:
     """
@@ -263,7 +263,7 @@ def get_wlm_configuration(
 
     Args:
         cluster_id: Redshift cluster identifier
-        region: AWS region where cluster is located (default: us-east-2)
+        region: AWS region where cluster is located (default: us-east-1)
         user_id: Identity of the person who initiated the request (for audit traceability)
 
     Returns:
@@ -367,12 +367,11 @@ def get_wlm_configuration(
             "region": region,
         }
 
-@tool
 def create_serverless_namespace(
     namespace_name: str,
     admin_username: str = "admin",
     db_name: str = "dev",
-    region: str = "us-east-2",
+    region: str = "us-east-1",
     user_id: str = "",
 ) -> Dict:
     """
@@ -382,7 +381,7 @@ def create_serverless_namespace(
         namespace_name: Name for the new Serverless namespace
         admin_username: Admin user for the namespace (default: admin)
         db_name: Default database name (default: dev)
-        region: AWS region where the namespace will be created (default: us-east-2)
+        region: AWS region where the namespace will be created (default: us-east-1)
         user_id: Identity of the person who initiated the request (for audit traceability)
 
     Returns:
@@ -422,13 +421,12 @@ def create_serverless_namespace(
         }
 
 
-@tool
 def create_serverless_workgroup(
     workgroup_name: str,
     namespace_name: str,
     base_rpu: int = 32,
     max_rpu: int = 512,
-    region: str = "us-east-2",
+    region: str = "us-east-1",
     user_id: str = "",
 ) -> Dict:
     """
@@ -439,7 +437,7 @@ def create_serverless_workgroup(
         namespace_name: Name of the namespace to associate the workgroup with
         base_rpu: Base Redshift Processing Units (default: 32)
         max_rpu: Maximum Redshift Processing Units (default: 512)
-        region: AWS region where the workgroup will be created (default: us-east-2)
+        region: AWS region where the workgroup will be created (default: us-east-1)
         user_id: Identity of the person who initiated the request (for audit traceability)
 
     Returns:
@@ -481,11 +479,10 @@ def create_serverless_workgroup(
         }
 
 
-@tool
 def execute_redshift_query(
     cluster_id: str,
     query: str,
-    region: str = "us-east-2",
+    region: str = "us-east-1",
     user_id: str = "",
 ) -> Dict:
     """
@@ -498,7 +495,7 @@ def execute_redshift_query(
     Args:
         cluster_id: Redshift cluster identifier
         query: SQL query to execute
-        region: AWS region where cluster is located (default: us-east-2)
+        region: AWS region where cluster is located (default: us-east-1)
         user_id: Identity of the person who initiated the request (for audit traceability)
 
     Returns:
@@ -567,12 +564,11 @@ def execute_redshift_query(
             "region": region,
         }
 
-@tool
 def setup_data_sharing(
     producer_namespace: str,
     consumer_namespaces: str,
     datashare_name: str = "default_share",
-    region: str = "us-east-2",
+    region: str = "us-east-1",
     user_id: str = "",
 ) -> Dict:
     """
@@ -585,7 +581,7 @@ def setup_data_sharing(
         producer_namespace: Name of the producer Serverless namespace
         consumer_namespaces: Comma-separated list of consumer namespace names
         datashare_name: Name for the datashare (default: default_share)
-        region: AWS region (default: us-east-2)
+        region: AWS region (default: us-east-1)
         user_id: Identity of the person who initiated the request (for audit traceability)
 
     Returns:
@@ -658,11 +654,10 @@ def setup_data_sharing(
         }
 
 
-@tool
 def restore_snapshot_to_serverless(
     snapshot_identifier: str,
     namespace_name: str,
-    region: str = "us-east-2",
+    region: str = "us-east-1",
     user_id: str = "",
 ) -> Dict:
     """
@@ -671,7 +666,7 @@ def restore_snapshot_to_serverless(
     Args:
         snapshot_identifier: Identifier of the cluster snapshot to restore
         namespace_name: Target Serverless namespace name
-        region: AWS region where the Serverless namespace resides (default: us-east-2)
+        region: AWS region where the Serverless namespace resides (default: us-east-1)
         user_id: Identity of the person who initiated the request (for audit traceability)
 
     Returns:

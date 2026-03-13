@@ -1,47 +1,67 @@
 """
-Shared test configuration.
+Shared test configuration and helpers for Bedrock Agents Lambda handler tests.
 
-Stubs the ``strands`` package so tool modules can be imported in the test
-environment where strands-agents is not installed (requires Python 3.10+).
+Provides ``build_action_group_event`` and ``parse_response_body`` helpers
+used across all test files to construct Bedrock Agent action group invocation
+events and parse Lambda handler responses.
 """
+from __future__ import annotations
+
+import json
 import os
 import sys
-import types
 
 # Add src/ to sys.path so the full ``redshift_agents`` package is importable
 _src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
-# Stub strands so tools/__init__.py → redshift_tools.py can be imported
-_strands = types.ModuleType("strands")
-_strands_tools = types.ModuleType("strands.tools")
-_strands_tools.tool = lambda f: f  # no-op @tool decorator
-_strands.tools = _strands_tools
-class _StubAgent:
-    def __init__(self, system_prompt="", tools=None, **kwargs):
-        self.system_prompt = system_prompt
-        self.tools = tools or []
 
-_strands.Agent = _StubAgent
+def build_action_group_event(
+    api_path: str,
+    parameters: dict,
+    action_group: str = "TestGroup",
+    http_method: str = "GET",
+) -> dict:
+    """Construct a Bedrock Agent action group invocation event.
 
-sys.modules.setdefault("strands", _strands)
-sys.modules.setdefault("strands.tools", _strands_tools)
+    Args:
+        api_path: The API path for the action (e.g. ``/listRedshiftClusters``).
+        parameters: Dict of parameter name -> value pairs.
+        action_group: Action group name (default ``"TestGroup"``).
+        http_method: HTTP method (default ``"GET"``).
 
-# Stub bedrock_agentcore so orchestrator module can be imported
-_bedrock_agentcore = types.ModuleType("bedrock_agentcore")
-_bedrock_agentcore_runtime = types.ModuleType("bedrock_agentcore.runtime")
+    Returns:
+        A dict matching the Bedrock Agent action group invocation event format.
+    """
+    return {
+        "messageVersion": "1.0",
+        "agent": {
+            "name": "test-agent",
+            "id": "test-id",
+            "alias": "test-alias",
+            "version": "1",
+        },
+        "actionGroup": action_group,
+        "apiPath": api_path,
+        "httpMethod": http_method,
+        "parameters": [
+            {"name": k, "type": "string", "value": str(v)}
+            for k, v in parameters.items()
+        ],
+        "sessionAttributes": {},
+        "promptSessionAttributes": {},
+    }
 
 
-class _StubBedrockAgentCoreApp:
-    def __init__(self, **kwargs):
-        pass
+def parse_response_body(response: dict):
+    """Extract the parsed tool result from a Lambda handler response.
 
-    def serve(self):
-        pass
+    Args:
+        response: The dict returned by a Lambda handler.
 
-
-_bedrock_agentcore_runtime.BedrockAgentCoreApp = _StubBedrockAgentCoreApp
-_bedrock_agentcore.runtime = _bedrock_agentcore_runtime
-sys.modules.setdefault("bedrock_agentcore", _bedrock_agentcore)
-sys.modules.setdefault("bedrock_agentcore.runtime", _bedrock_agentcore_runtime)
+    Returns:
+        The parsed JSON body (dict or list).
+    """
+    body_str = response["response"]["responseBody"]["application/json"]["body"]
+    return json.loads(body_str)

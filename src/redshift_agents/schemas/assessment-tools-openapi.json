@@ -1,0 +1,212 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Assessment Tools",
+    "description": "Redshift cluster assessment tools for analyzing configuration, retrieving CloudWatch metrics, and querying WLM configuration.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/analyzeRedshiftCluster": {
+      "get": {
+        "operationId": "analyzeRedshiftCluster",
+        "summary": "Analyze Redshift cluster configuration",
+        "description": "Returns detailed cluster configuration including node type, security settings, network configuration, and version information.",
+        "parameters": [
+          {
+            "name": "cluster_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Redshift cluster identifier"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "us-east-1"
+            },
+            "description": "AWS region where cluster is located (default: us-east-1)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identity of the person who initiated the request, used for audit traceability"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cluster configuration details or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "Cluster configuration details"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
+                      },
+                      "required": ["error"]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/getClusterMetrics": {
+      "get": {
+        "operationId": "getClusterMetrics",
+        "summary": "Get CloudWatch metrics for a Redshift cluster",
+        "description": "Retrieves CloudWatch performance metrics including CPU utilization, database connections, network throughput, disk usage, and query latency.",
+        "parameters": [
+          {
+            "name": "cluster_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Redshift cluster identifier"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "us-east-1"
+            },
+            "description": "AWS region where cluster is located (default: us-east-1)"
+          },
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 24
+            },
+            "description": "Number of hours of historical data to retrieve (default: 24)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identity of the person who initiated the request, used for audit traceability"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CloudWatch metrics or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "Cluster metrics data"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
+                      },
+                      "required": ["error"]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/getWlmConfiguration": {
+      "get": {
+        "operationId": "getWlmConfiguration",
+        "summary": "Query WLM configuration and per-queue metrics",
+        "description": "Queries WLM configuration via the Redshift Data API and returns per-queue metrics including concurrency, wait times, execution times, and saturation.",
+        "parameters": [
+          {
+            "name": "cluster_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Redshift cluster identifier"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "us-east-1"
+            },
+            "description": "AWS region where cluster is located (default: us-east-1)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identity of the person who initiated the request, used for audit traceability"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WLM queue metrics or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "WLM configuration and per-queue metrics"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
+                      },
+                      "required": ["error"]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

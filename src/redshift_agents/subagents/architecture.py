@@ -1,7 +1,8 @@
 """
 Architecture Agent for Redshift Serverless workgroup design.
 
-Uses the Strands Agent framework to design optimal Serverless workgroup
+Contains the system prompt constant used by the CDK stack to configure
+the Architecture Bedrock Agent. The agent designs optimal Serverless workgroup
 architectures based on WLM queue analysis from the assessment phase.
 Supports multi-workgroup splits, 1:1 migration for purpose-built clusters,
 RPU sizing (minimum 32), and three architecture patterns.
@@ -9,13 +10,6 @@ RPU sizing (minimum 32), and three architecture patterns.
 Requirements: FR-3.1, FR-3.2, FR-3.3, FR-3.4, FR-3.5, FR-3.6, FR-3.7, FR-1.5
 """
 from __future__ import annotations
-
-from strands import Agent
-
-from ..tools.redshift_tools import (
-    execute_redshift_query,
-    get_wlm_configuration,
-)
 
 ARCHITECTURE_SYSTEM_PROMPT = """You are the Architecture Agent for Redshift Provisioned-to-Serverless modernization.
 
@@ -122,29 +116,3 @@ Produce your final output as structured JSON matching the ArchitectureResult sch
 - Always propagate the user_id parameter to every tool call for audit traceability.
 - If a tool returns an error, report it and continue with available data.
 """
-
-
-def create_agent(tools=None):
-    """Create the Architecture Agent with Strands framework.
-
-    Args:
-        tools: Optional list of tool functions. Defaults to the standard
-            architecture tool set (get_wlm_configuration, execute_redshift_query).
-
-    Returns:
-        A configured Strands Agent instance for architecture design.
-    """
-    return Agent(
-        system_prompt=ARCHITECTURE_SYSTEM_PROMPT,
-        tools=tools or [
-            get_wlm_configuration,
-            execute_redshift_query,
-        ],
-    )
-
-
-if __name__ == "__main__":
-    from bedrock_agentcore.runtime import BedrockAgentCoreApp
-
-    app = BedrockAgentCoreApp(agent_factory=create_agent)
-    app.serve()

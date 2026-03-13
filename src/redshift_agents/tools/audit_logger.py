@@ -34,7 +34,10 @@ except ImportError:
 
     JsonFormatter = jsonlogger.JsonFormatter
 
-from ..models import AuditEvent
+try:
+    from models import AuditEvent
+except ImportError:
+    from ..models import AuditEvent
 
 # Valid event types per NFR-6.6
 VALID_EVENT_TYPES = frozenset(

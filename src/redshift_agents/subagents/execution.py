@@ -1,7 +1,8 @@
 """
 Execution Agent for Redshift Provisioned-to-Serverless migration.
 
-Uses the Strands Agent framework to execute the migration plan: create
+Contains the system prompt constant used by the CDK stack to configure
+the Execution Bedrock Agent. The agent executes the migration plan: create
 Serverless namespace and workgroups, restore snapshots, set up data sharing,
 generate user migration plans, validate performance, define rollback
 procedures, and plan minimal/zero downtime cutover.
@@ -9,16 +10,6 @@ procedures, and plan minimal/zero downtime cutover.
 Requirements: FR-4.1, FR-4.2, FR-4.3, FR-4.4, FR-4.5, FR-4.6, FR-4.7, FR-1.5
 """
 from __future__ import annotations
-
-from strands import Agent
-
-from ..tools.redshift_tools import (
-    create_serverless_namespace,
-    create_serverless_workgroup,
-    execute_redshift_query,
-    restore_snapshot_to_serverless,
-    setup_data_sharing,
-)
 
 EXECUTION_SYSTEM_PROMPT = """You are the Execution Agent for Redshift Provisioned-to-Serverless modernization.
 
@@ -152,34 +143,3 @@ Produce your final output as structured JSON matching the ExecutionResult schema
 - Always propagate the user_id parameter to every tool call for audit traceability.
 - If data sharing is not needed (independent/hybrid pattern), explicitly set `data_sharing_configured` to false.
 """
-
-
-def create_agent(tools=None):
-    """Create the Execution Agent with Strands framework.
-
-    Args:
-        tools: Optional list of tool functions. Defaults to the standard
-            execution tool set (execute_redshift_query, create_serverless_namespace,
-            create_serverless_workgroup, restore_snapshot_to_serverless,
-            setup_data_sharing).
-
-    Returns:
-        A configured Strands Agent instance for migration execution.
-    """
-    return Agent(
-        system_prompt=EXECUTION_SYSTEM_PROMPT,
-        tools=tools or [
-            execute_redshift_query,
-            create_serverless_namespace,
-            create_serverless_workgroup,
-            restore_snapshot_to_serverless,
-            setup_data_sharing,
-        ],
-    )
-
-
-if __name__ == "__main__":
-    from bedrock_agentcore.runtime import BedrockAgentCoreApp
-
-    app = BedrockAgentCoreApp(agent_factory=create_agent)
-    app.serve()

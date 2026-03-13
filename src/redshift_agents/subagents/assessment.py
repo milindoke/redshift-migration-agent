@@ -1,22 +1,14 @@
 """
 Assessment Agent for Redshift cluster analysis.
 
-Uses the Strands Agent framework to perform comprehensive assessment of
+Contains the system prompt constant used by the CDK stack to configure
+the Assessment Bedrock Agent. The agent performs comprehensive assessment of
 Redshift Provisioned clusters, focusing on WLM queue analysis and contention
 detection to build the case for multi-warehouse Serverless migration.
 
 Requirements: FR-2.1, FR-2.2, FR-2.3, FR-2.4, FR-2.5, FR-2.6, FR-2.7, FR-1.5
 """
 from __future__ import annotations
-
-from strands import Agent
-
-from ..tools.redshift_tools import (
-    analyze_redshift_cluster,
-    get_cluster_metrics,
-    get_wlm_configuration,
-    list_redshift_clusters,
-)
 
 ASSESSMENT_SYSTEM_PROMPT = """You are the Assessment Agent for Redshift Provisioned-to-Serverless modernization.
 
@@ -106,32 +98,3 @@ a multi-warehouse Serverless architecture is needed.
 - If a tool returns an error, report it and continue with available data.
 - Always propagate the user_id parameter to every tool call for audit traceability.
 """
-
-
-def create_agent(tools=None):
-    """Create the Assessment Agent with Strands framework.
-
-    Args:
-        tools: Optional list of tool functions. Defaults to the standard
-            assessment tool set (list_redshift_clusters, analyze_redshift_cluster,
-            get_cluster_metrics, get_wlm_configuration).
-
-    Returns:
-        A configured Strands Agent instance for cluster assessment.
-    """
-    return Agent(
-        system_prompt=ASSESSMENT_SYSTEM_PROMPT,
-        tools=tools or [
-            list_redshift_clusters,
-            analyze_redshift_cluster,
-            get_cluster_metrics,
-            get_wlm_configuration,
-        ],
-    )
-
-
-if __name__ == "__main__":
-    from bedrock_agentcore.runtime import BedrockAgentCoreApp
-
-    app = BedrockAgentCoreApp(agent_factory=create_agent)
-    app.serve()
