@@ -1,216 +1,128 @@
 # Redshift Modernization Agents
 
-Multi-agent system for migrating Amazon Redshift Provisioned clusters to Serverless using the Strands Agent framework and Amazon Bedrock AgentCore.
+AI-powered multi-agent system for migrating Amazon Redshift Provisioned clusters to Serverless, built on fully managed Amazon Bedrock Agents.
 
 ## What This Does
 
-- **3-phase workflow**: Assessment → Architecture → Execution with approval gates between each phase
-- **WLM queue analysis**: Surfaces contention problems (wait times, disk spill, queue saturation) to build the case for multi-warehouse migration
-- **Workgroup split design**: Maps WLM queues to Serverless workgroups with RPU sizing (minimum 32 for AI-driven scaling)
-- **Automated execution**: Creates namespaces/workgroups, restores snapshots, sets up data sharing, migrates users, validates performance
-- **Two migration paths**: Multi-workgroup split (contention-driven) or 1:1 migration (purpose-built clusters)
+- **3-phase workflow**: Assessment → Architecture → Execution with human approval gates
+- **WLM queue analysis**: Surfaces contention problems (wait times, disk spill, saturation)
+- **Workgroup design**: Maps WLM queues to Serverless workgroups with RPU sizing
+- **Automated execution**: Creates namespaces/workgroups, snapshots, restores, data sharing, validation
+- **Two migration paths**: Multi-workgroup split or 1:1 migration
+- **Cognito authentication**: JWT-based identity, no manual user ID entry
+- **Cluster-level memory**: Agents remember previous conversations per cluster
 
 ## Architecture
 
-```
-Customer Account
-┌──────────────────────────────────────────────────────────────┐
-│  Orchestrator Agent                                          │
-│  • 3-phase workflow coordination                             │
-│  • Approval gates (human-in-the-loop)                        │
-│  • Cluster locking (DynamoDB)                                │
-│  • Identity propagation                                      │
-│                                                              │
-│  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐    │
-│  │ Assessment     │ │ Architecture   │ │ Execution      │    │
-│  │ • Cluster      │ │ • Workgroup    │ │ • Create ns/wg │    │
-│  │   discovery    │ │   split design │ │ • Snapshot      │    │
-│  │ • WLM queue    │ │ • RPU sizing   │ │   restore      │    │
-│  │   analysis     │ │   (≥32 RPU)    │ │ • Data sharing │    │
-│  │ • CloudWatch   │ │ • Diagnostic   │ │ • User migrate │    │
-│  │   metrics      │ │   SQL          │ │ • Validation   │    │
-│  └────────────────┘ └────────────────┘ └────────────────┘    │
-│                                                              │
-│  Shared Tools (@tool) ──► Redshift, CloudWatch, DynamoDB     │
-│  Audit Logger ──► CloudWatch Logs                            │
-└──────────────────────────────────────────────────────────────┘
-```
+- **Orchestrator** (Supervisor Agent) — coordinates workflow, approval gates, cluster locks, lists clusters directly
+- **Assessment Agent** — cluster config analysis, CloudWatch metrics, WLM queue contention
+- **Architecture Agent** — workgroup design, RPU sizing, migration pattern selection
+- **Execution Agent** — create resources, snapshot/restore, data sharing, validation
 
-All agents run within the customer account. No cross-account dependencies. Customer data never leaves the account.
+All infrastructure provisioned via AWS CDK. Single `cdk deploy` — no manual setup.
+
+## Region Configuration
+
+All tools resolve region from the `AWS_REGION` environment variable (default: `us-east-2`). No hardcoded regions. Users can request a different region in conversation and the agent remembers it for the session.
 
 ## Quick Start
 
-### 1. Deploy Subagents to Bedrock AgentCore
+### Prerequisites
+- AWS CLI configured with credentials
+- Node.js (for CDK CLI)
+- Python 3.12+
+- CDK CLI: `npm install -g aws-cdk`
+
+### 1. Deploy
 
 ```bash
-cd src/redshift_agents
-./deploy-agentcore.sh
+cd src/redshift_agents/cdk
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cdk bootstrap aws://ACCOUNT_ID/REGION
+cdk deploy
 ```
 
-This runs `agentcore launch` for each subagent (assessment, architecture, execution).
+### 2. Configure
 
-### 2. Set Up Multi-Agent Collaboration
-
-Create the Bedrock supervisor agent and wire it to the subagents:
-
-```bash
-python setup_multi_agent.py \
-    --supervisor-role-arn arn:aws:iam::ACCOUNT:role/redshift-supervisor \
-    --assessment-alias-arn arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID \
-    --architecture-alias-arn arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID \
-    --execution-alias-arn arn:aws:bedrock:REGION:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID
-```
-
-This creates a Bedrock supervisor agent that uses native multi-agent collaboration to route tasks to the appropriate subagent.
-
-### 3. Launch the Chat UI
-
-```bash
-pip install -r ui/requirements.txt
-export ORCHESTRATOR_AGENT_ID=<supervisor-agent-id>
-export ORCHESTRATOR_AGENT_ALIAS_ID=<supervisor-alias-id>
-streamlit run ui/app.py
-```
-
-Opens a chat interface at `http://localhost:8501` where you can interact with the supervisor conversationally.
-
-### Run Unit Tests (no AWS credentials needed)
-
-```bash
-pip install -r src/redshift_agents/tests/requirements-test.txt
-cd src/redshift_agents
-pytest tests/ -v
-```
-
-### Configuration
-
-Copy `.env.example` and set your values:
+Copy CDK outputs into your `.env` file:
 
 ```bash
 cp .env.example .env
+# Edit .env with values from CDK outputs
 ```
 
-Key variables:
+### 3. Create a Cognito User
 
-| Variable | Description |
-|----------|-------------|
-| `AWS_REGION` | Deployment region (agents can operate on clusters in any region) |
-| `DYNAMODB_LOCK_TABLE` | DynamoDB table name for cluster locking |
-| `ASSESSMENT_AGENT_ID` | Bedrock AgentCore agent ID (set after deployment) |
-| `ARCHITECTURE_AGENT_ID` | Bedrock AgentCore agent ID (set after deployment) |
-| `EXECUTION_AGENT_ID` | Bedrock AgentCore agent ID (set after deployment) |
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id <CognitoUserPoolId> \
+  --username your-email@example.com \
+  --temporary-password TempPass123! \
+  --user-attributes Name=email,Value=your-email@example.com
 
-## Workflow
-
-### Phase 1: Assessment
-
-The assessment agent analyzes the target Redshift Provisioned cluster:
-- Discovers clusters in the account (or uses a specified cluster ID)
-- Retrieves cluster configuration (node type, count, encryption, VPC, enhanced VPC routing)
-- Pulls CloudWatch metrics (CPU, connections, network, disk, latency)
-- Queries WLM configuration and per-queue metrics (wait times, disk spill, saturation)
-- Produces a contention narrative explaining why migration is needed
-
-### Gate 1: Approval
-
-Assessment results are presented to the user. The orchestrator **will not proceed** until the user explicitly approves.
-
-### Phase 2: Architecture
-
-The architecture agent designs the target Serverless topology:
-- Maps WLM queues to Serverless workgroups (multi-queue → one workgroup per queue; single queue → producer/consumer split)
-- Runs diagnostic SQL to determine starting RPU values (minimum 32 RPU)
-- Recommends AI-driven scaling with price-performance targets
-- Supports three patterns: hub-and-spoke (data sharing), independent warehouses, hybrid
-- Includes cost estimates and migration complexity assessment
-
-### Gate 2: Approval
-
-The proposed architecture is presented to the user. The orchestrator **will not proceed** until the user explicitly approves.
-
-### Phase 3: Execution
-
-The execution agent carries out the migration:
-- Creates Serverless namespace and workgroups per the architecture spec
-- Restores a snapshot of the Provisioned cluster into the new namespace
-- Sets up data sharing between workgroups (if hub-and-spoke)
-- Generates a user/application migration plan (old WLM queues → new workgroups)
-- Validates query performance on new workgroups
-- Defines rollback procedures at each step
-- Plans minimal/zero downtime cutover
-
-## Cluster Locking
-
-A DynamoDB table (`redshift_modernization_locks`) prevents two users from working on the same cluster simultaneously.
-
-- Lock acquired at workflow start, released on completion or failure
-- Uses DynamoDB conditional writes for atomic acquisition
-- Locks auto-expire after 24 hours (TTL) as a safety net
-- If a cluster is locked, the user is told who holds the lock and when it was acquired
-
-## Identity Propagation
-
-The identity of the person who initiated a request is propagated end-to-end:
-
-```
-User (jane.doe)
-  → Orchestrator session (user_id="jane.doe")
-    → Subagent payload (user_id="jane.doe")
-      → Tool invocation (audit: initiated_by="jane.doe")
-        → Redshift Data API (DbUser="jane.doe")
-          → Redshift audit logs (STL_CONNECTION_LOG)
-            → CloudTrail (PrincipalTag/user=jane.doe)
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id <CognitoUserPoolId> \
+  --username your-email@example.com \
+  --group-name redshift-admin
 ```
 
-Every audit log event, every SQL query, and every CloudTrail entry traces back to the individual who triggered the workflow.
+### 4. Run the UI
 
-## IAM Roles
+```bash
+pip install -r ui/requirements.txt
+cd src/redshift_agents
+streamlit run ui/app.py
+```
 
-Each agent has its own least-privilege IAM role:
+### Run Tests
 
-| Agent | Key Permissions |
-|-------|----------------|
-| Orchestrator | `bedrock:InvokeAgent`, DynamoDB read/write (locks), CloudWatch Logs |
-| Assessment | `redshift:Describe*`, `redshift-data:ExecuteStatement` (read-only), `cloudwatch:GetMetricStatistics` |
-| Architecture | `redshift:Describe*`, `redshift-data:ExecuteStatement` (diagnostic SQL), `cloudwatch:GetMetricStatistics` |
-| Execution | `redshift-serverless:Create*`, `redshift-serverless:Update*`, `redshift:RestoreFromClusterSnapshot`, `redshift-data:ExecuteStatement` |
+```bash
+pip install -r tests/requirements-test.txt
+pytest tests/ -v
+```
 
-IAM policy files are in `iam/`.
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AWS_REGION` | `us-east-2` | Deployment region (tools auto-resolve from this) |
+| `ORCHESTRATOR_AGENT_ID` | — | From CDK output |
+| `ORCHESTRATOR_AGENT_ALIAS_ID` | — | From CDK output |
+| `COGNITO_USER_POOL_ID` | — | From CDK output |
+| `COGNITO_APP_CLIENT_ID` | — | From CDK output |
+| `COGNITO_IDENTITY_POOL_ID` | — | From CDK output |
+| `DYNAMODB_LOCK_TABLE` | `redshift_modernization_locks` | Lock table name |
 
 ## Project Structure
 
 ```
 src/redshift_agents/
-├── orchestrator/
-│   └── orchestrator.py          # Strands orchestrator (fallback, standalone mode)
-├── subagents/
-│   ├── assessment.py            # Cluster analysis + WLM queue metrics
-│   ├── architecture.py          # Workgroup split design + RPU sizing
-│   └── execution.py             # Migration execution + validation
-├── tools/
-│   ├── redshift_tools.py        # Shared @tool functions (boto3 calls)
+├── cdk/                         # CDK infrastructure (one-click deploy)
+│   ├── app.py                   # CDK app entry point
+│   ├── stack.py                 # Full stack: Lambda, Bedrock Agents, Cognito, DynamoDB
+│   └── cdk.json                 # CDK config (foundation model selection)
+├── lambdas/                     # Lambda action group handlers
+│   ├── assessment_handler.py    # 4 assessment tools
+│   ├── execution_handler.py     # 6 execution tools
+│   └── cluster_lock_handler.py  # 2 lock tools
+├── schemas/                     # OpenAPI 3.0 schemas for action groups
+├── tools/                       # Tool implementations (boto3 calls)
+│   ├── redshift_tools.py        # 10 Redshift/Serverless/CloudWatch tools
 │   ├── cluster_lock.py          # DynamoDB cluster locking
-│   ├── audit_logger.py          # Structured JSON audit logging
-│   └── log_sharing.py           # Cross-account log sharing (opt-in)
-├── ui/
-│   ├── app.py                   # Streamlit chat UI
-│   ├── requirements.txt         # UI dependencies
-│   └── README.md                # UI setup instructions
-├── iam/                         # Per-agent IAM policy documents
-├── tests/                       # Unit tests (pytest, no AWS creds needed)
-├── models.py                    # Data models (dataclasses)
-├── setup_multi_agent.py         # Create Bedrock supervisor + wire collaborators
-├── deploy-agentcore.sh          # Deploy subagents via agentcore launch
-├── requirements.txt
-└── .env.example
+│   └── audit_logger.py          # Structured JSON audit logging
+├── orchestrator/                # Orchestrator system prompt
+├── subagents/                   # Sub-agent system prompts (with embedded KB)
+├── knowledge_base/              # Reference docs (embedded in agent prompts)
+├── ui/                          # Streamlit chat UI with Cognito auth
+├── tests/                       # 101 tests (unit + 23 property-based)
+├── models.py                    # Dataclasses
+└── .env.example                 # Environment template
 ```
 
-## Monitoring
+## Teardown
 
 ```bash
-# Agent logs
-aws logs tail /aws/bedrock/agentcore/redshift-orchestrator --follow
-aws logs tail /aws/bedrock/agentcore/redshift-assessment --follow
-aws logs tail /aws/bedrock/agentcore/redshift-architecture --follow
-aws logs tail /aws/bedrock/agentcore/redshift-execution --follow
+cd src/redshift_agents/cdk
+cdk destroy
 ```

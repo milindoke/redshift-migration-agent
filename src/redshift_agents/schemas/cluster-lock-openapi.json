@@ -16,22 +16,28 @@
             "name": "cluster_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Redshift cluster identifier (DynamoDB partition key)"
           },
           {
             "name": "user_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identity of the user requesting the lock"
           },
           {
             "name": "region",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "us-east-1" },
-            "description": "AWS region where the DynamoDB lock table resides (default: us-east-1)"
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region where the DynamoDB lock table resides (defaults to deployment region)"
           }
         ],
         "responses": {
@@ -45,18 +51,31 @@
                       "type": "object",
                       "description": "Lock result with acquired flag, holder identity, and timestamp",
                       "properties": {
-                        "acquired": { "type": "boolean" },
-                        "cluster_id": { "type": "string" },
-                        "lock_holder": { "type": "string" },
-                        "acquired_at": { "type": "string" }
+                        "acquired": {
+                          "type": "boolean"
+                        },
+                        "cluster_id": {
+                          "type": "string"
+                        },
+                        "lock_holder": {
+                          "type": "string"
+                        },
+                        "acquired_at": {
+                          "type": "string"
+                        }
                       }
                     },
                     {
                       "type": "object",
                       "properties": {
-                        "error": { "type": "string", "description": "Error message" }
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
                       },
-                      "required": ["error"]
+                      "required": [
+                        "error"
+                      ]
                     }
                   ]
                 }
@@ -76,22 +95,28 @@
             "name": "cluster_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Redshift cluster identifier"
           },
           {
             "name": "user_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identity of the user releasing the lock"
           },
           {
             "name": "region",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "us-east-1" },
-            "description": "AWS region where the DynamoDB lock table resides (default: us-east-1)"
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region where the DynamoDB lock table resides (defaults to deployment region)"
           }
         ],
         "responses": {
@@ -105,16 +130,27 @@
                       "type": "object",
                       "description": "Release result",
                       "properties": {
-                        "released": { "type": "boolean" },
-                        "cluster_id": { "type": "string" }
+                        "released": {
+                          "type": "boolean"
+                        },
+                        "cluster_id": {
+                          "type": "string"
+                        }
                       }
                     },
                     {
                       "type": "object",
                       "properties": {
-                        "released": { "type": "boolean" },
-                        "error": { "type": "string", "description": "Error message" },
-                        "cluster_id": { "type": "string" }
+                        "released": {
+                          "type": "boolean"
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        },
+                        "cluster_id": {
+                          "type": "string"
+                        }
                       }
                     }
                   ]

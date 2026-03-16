@@ -27,6 +27,7 @@ if _package_root not in sys.path:
 import boto3
 
 from tools.redshift_tools import (
+    create_cluster_snapshot,
     create_serverless_namespace,
     create_serverless_workgroup,
     execute_redshift_query,
@@ -45,6 +46,12 @@ def _parse_parameters(event: dict) -> dict:
 
 def _build_response(event: dict, result: object) -> dict:
     """Build the Bedrock Agent action group response format."""
+    # Ensure body is never empty — Bedrock rejects blank text blocks
+    if result is None:
+        result = {"status": "no data returned"}
+    body = json.dumps(result)
+    if not body or body == "null":
+        body = json.dumps({"status": "empty result"})
     return {
         "messageVersion": "1.0",
         "response": {
@@ -54,7 +61,7 @@ def _build_response(event: dict, result: object) -> dict:
             "httpStatusCode": 200,
             "responseBody": {
                 "application/json": {
-                    "body": json.dumps(result),
+                    "body": body,
                 }
             },
         },
@@ -95,11 +102,18 @@ def handler(event: dict, context: object = None) -> dict:
                 file=sys.stderr,
             )
 
-        if api_path == "/executeRedshiftQuery":
+        if api_path == "/createClusterSnapshot":
+            result = create_cluster_snapshot(
+                cluster_id=params["cluster_id"],
+                snapshot_identifier=params.get("snapshot_identifier", ""),
+                region=params.get("region", ""),
+                user_id=user_id,
+            )
+        elif api_path == "/executeRedshiftQuery":
             result = execute_redshift_query(
                 cluster_id=params["cluster_id"],
                 query=params["query"],
-                region=params.get("region", "us-east-1"),
+                region=params.get("region", ""),
                 user_id=user_id,
             )
         elif api_path == "/createServerlessNamespace":
@@ -107,7 +121,7 @@ def handler(event: dict, context: object = None) -> dict:
                 namespace_name=params["namespace_name"],
                 admin_username=params.get("admin_username", "admin"),
                 db_name=params.get("db_name", "dev"),
-                region=params.get("region", "us-east-1"),
+                region=params.get("region", ""),
                 user_id=user_id,
             )
         elif api_path == "/createServerlessWorkgroup":
@@ -116,14 +130,15 @@ def handler(event: dict, context: object = None) -> dict:
                 namespace_name=params["namespace_name"],
                 base_rpu=int(params.get("base_rpu", "32")),
                 max_rpu=int(params.get("max_rpu", "512")),
-                region=params.get("region", "us-east-1"),
+                region=params.get("region", ""),
                 user_id=user_id,
             )
         elif api_path == "/restoreSnapshotToServerless":
             result = restore_snapshot_to_serverless(
                 snapshot_identifier=params["snapshot_identifier"],
                 namespace_name=params["namespace_name"],
-                region=params.get("region", "us-east-1"),
+                workgroup_name=params.get("workgroup_name", ""),
+                region=params.get("region", ""),
                 user_id=user_id,
             )
         elif api_path == "/setupDataSharing":
@@ -131,7 +146,7 @@ def handler(event: dict, context: object = None) -> dict:
                 producer_namespace=params["producer_namespace"],
                 consumer_namespaces=params["consumer_namespaces"],
                 datashare_name=params.get("datashare_name", "default_share"),
-                region=params.get("region", "us-east-1"),
+                region=params.get("region", ""),
                 user_id=user_id,
             )
         else:

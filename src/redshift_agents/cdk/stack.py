@@ -18,6 +18,7 @@ from aws_cdk import (
     RemovalPolicy,
     Stack,
 )
+from aws_cdk import aws_bedrock as bedrock
 from aws_cdk import aws_cognito as cognito
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_iam as iam
@@ -55,7 +56,49 @@ _LAMBDA_ASSET_EXCLUDES = [
     "requirements.txt",
     "README.md",
     "setup_multi_agent.py",
+    "_lambda_deps",
+    "_lambda_deps/*",
+    "orchestrator",
+    "orchestrator/*",
+    "subagents",
+    "subagents/*",
 ]
+
+
+def _lambda_code() -> _lambda.Code:
+    """Build Lambda deployment package with dependencies bundled locally."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    build_dir = _SRC_DIR / "_lambda_build"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    build_dir.mkdir()
+
+    # Install python-json-logger into build dir
+    subprocess.check_call(
+        [
+            "pip", "install", "python-json-logger",
+            "-t", str(build_dir),
+            "--quiet", "--disable-pip-version-check",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Copy application code
+    for item in ["lambdas", "tools"]:
+        src = _SRC_DIR / item
+        dst = build_dir / item
+        shutil.copytree(src, dst, ignore=shutil.ignore_patterns(
+            "__pycache__", "*.pyc", ".hypothesis",
+        ))
+
+    for item in ["models.py", "__init__.py"]:
+        shutil.copy2(_SRC_DIR / item, build_dir / item)
+
+    return _lambda.Code.from_asset(str(build_dir))
 
 
 def _extract_prompt(filepath: Path, variable_name: str) -> str:
@@ -214,9 +257,7 @@ class RedshiftModernizationStack(Stack):
             function_name="assessment-tools",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="lambdas.assessment_handler.handler",
-            code=_lambda.Code.from_asset(
-                str(_SRC_DIR), exclude=_LAMBDA_ASSET_EXCLUDES
-            ),
+            code=_lambda_code(),
             memory_size=256,
             timeout=Duration.seconds(60),
             role=role,
@@ -233,36 +274,16 @@ class RedshiftModernizationStack(Stack):
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name(
                     "service-role/AWSLambdaBasicExecutionRole"
-                )
+                ),
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "AmazonRedshiftFullAccess"
+                ),
             ],
         )
+        # Secrets Manager permissions for managed admin password on namespace creation
         role.add_to_policy(
             iam.PolicyStatement(
-                actions=["redshift-data:*"],
-                resources=["*"],
-            )
-        )
-        role.add_to_policy(
-            iam.PolicyStatement(
-                actions=[
-                    "redshift-serverless:CreateNamespace",
-                    "redshift-serverless:CreateWorkgroup",
-                    "redshift-serverless:UpdateNamespace",
-                    "redshift-serverless:UpdateWorkgroup",
-                    "redshift-serverless:GetNamespace",
-                ],
-                resources=["*"],
-            )
-        )
-        role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["redshift:RestoreFromClusterSnapshot"],
-                resources=["*"],
-            )
-        )
-        role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["sts:AssumeRole", "sts:TagSession"],
+                actions=["secretsmanager:*"],
                 resources=["*"],
             )
         )
@@ -273,9 +294,7 @@ class RedshiftModernizationStack(Stack):
             function_name="execution-tools",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="lambdas.execution_handler.handler",
-            code=_lambda.Code.from_asset(
-                str(_SRC_DIR), exclude=_LAMBDA_ASSET_EXCLUDES
-            ),
+            code=_lambda_code(),
             memory_size=256,
             timeout=Duration.seconds(120),
             role=role,
@@ -314,9 +333,7 @@ class RedshiftModernizationStack(Stack):
             function_name="cluster-lock",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="lambdas.cluster_lock_handler.handler",
-            code=_lambda.Code.from_asset(
-                str(_SRC_DIR), exclude=_LAMBDA_ASSET_EXCLUDES
-            ),
+            code=_lambda_code(),
             memory_size=128,
             timeout=Duration.seconds(30),
             role=role,
@@ -386,6 +403,13 @@ class RedshiftModernizationStack(Stack):
         cluster_lock_schema = self._load_schema("cluster-lock-openapi.json")
         list_clusters_schema = self._load_schema("list-clusters-openapi.json")
 
+        # Shared memory configuration — all agents use SESSION_SUMMARY
+        # with cluster_id as memoryId so history persists per cluster
+        _memory_config = cdk.aws_bedrock.CfnAgent.MemoryConfigurationProperty(
+            enabled_memory_types=["SESSION_SUMMARY"],
+            storage_days=30,
+        )
+
         # --- Assessment Agent ---
         assessment_agent = cdk.aws_bedrock.CfnAgent(
             self,
@@ -395,6 +419,7 @@ class RedshiftModernizationStack(Stack):
             foundation_model=foundation_model,
             instruction=ASSESSMENT_SYSTEM_PROMPT,
             auto_prepare=True,
+            memory_configuration=_memory_config,
             action_groups=[
                 cdk.aws_bedrock.CfnAgent.AgentActionGroupProperty(
                     action_group_name="assessment-tools",
@@ -424,6 +449,7 @@ class RedshiftModernizationStack(Stack):
             foundation_model=foundation_model,
             instruction=ARCHITECTURE_SYSTEM_PROMPT,
             auto_prepare=True,
+            memory_configuration=_memory_config,
             action_groups=[
                 cdk.aws_bedrock.CfnAgent.AgentActionGroupProperty(
                     action_group_name="assessment-tools",
@@ -462,6 +488,7 @@ class RedshiftModernizationStack(Stack):
             foundation_model=foundation_model,
             instruction=EXECUTION_SYSTEM_PROMPT,
             auto_prepare=True,
+            memory_configuration=_memory_config,
             action_groups=[
                 cdk.aws_bedrock.CfnAgent.AgentActionGroupProperty(
                     action_group_name="execution-tools",
@@ -504,6 +531,7 @@ class RedshiftModernizationStack(Stack):
             foundation_model=foundation_model,
             instruction=ORCHESTRATOR_SYSTEM_PROMPT,
             auto_prepare=True,
+            memory_configuration=_memory_config,
             action_groups=[
                 cdk.aws_bedrock.CfnAgent.AgentActionGroupProperty(
                     action_group_name="cluster-lock",

@@ -44,6 +44,7 @@ def _invoke_subagent(
     customer_account_id: str,
     region: str,
 ) -> Dict:
+
     """Invoke a subagent via Bedrock Agent Runtime InvokeAgent API.
 
     Emits an audit event for delegation logging (FR-5.5) and propagates
@@ -130,6 +131,7 @@ def _invoke_subagent(
         }
 
 
+
 def invoke_assessment(
     cluster_id: str, region: str, customer_account_id: str, user_id: str,
 ) -> Dict:
@@ -185,6 +187,7 @@ def release_cluster_lock(
     return release_lock(cluster_id, user_id, region)
 
 
+
 # ---------------------------------------------------------------------------
 # System prompt -- covers all orchestrator responsibilities
 # ---------------------------------------------------------------------------
@@ -204,13 +207,14 @@ immediately with a clear error message:
 "Error: user_id is required for all modernization workflows. Please provide your user_id."
 
 Do NOT proceed with any workflow step without a valid `user_id`.
-
-## Workflow: Three Phases with Approval Gates
-
 ### Phase 1: Discovery & Assessment
-1. Collect cluster identifier, region, and customer_account_id from the user.
-2. Acquire a cluster lock using `acquire_cluster_lock(cluster_id, user_id, region)`.
+1. If the user asks to list clusters or hasn't specified a cluster, call `listRedshiftClusters` directly — this is YOUR tool, do NOT delegate it to the Assessment Agent.
+2. Collect cluster identifier, region, and customer_account_id from the user.
+3. Acquire a cluster lock using `acquire_cluster_lock(cluster_id, user_id, region)`.
    - If the lock is denied, inform the user who holds the lock and when it was acquired.
+   - Do NOT proceed if the lock cannot be acquired.
+4. Delegate detailed assessment to the Assessment Agent (cluster analysis, CloudWatch metrics, WLM queue analysis).
+5. Present the assessment results (WLM queue analysis, contention findings) to the user.
    - Do NOT proceed if the lock cannot be acquired.
 3. Invoke `invoke_assessment(cluster_id, region, customer_account_id, user_id)`.
 4. Present the assessment results (WLM queue analysis, contention findings) to the user.

@@ -29,6 +29,12 @@ def _parse_parameters(event: dict) -> dict:
 
 def _build_response(event: dict, result: object) -> dict:
     """Build the Bedrock Agent action group response format."""
+    # Ensure body is never empty — Bedrock rejects blank text blocks
+    if result is None:
+        result = {"status": "no data returned"}
+    body = json.dumps(result)
+    if not body or body == "null":
+        body = json.dumps({"status": "empty result"})
     return {
         "messageVersion": "1.0",
         "response": {
@@ -38,7 +44,7 @@ def _build_response(event: dict, result: object) -> dict:
             "httpStatusCode": 200,
             "responseBody": {
                 "application/json": {
-                    "body": json.dumps(result),
+                    "body": body,
                 }
             },
         },
@@ -56,13 +62,13 @@ def handler(event: dict, context: object = None) -> dict:
             result = acquire_lock(
                 cluster_id=params["cluster_id"],
                 user_id=user_id,
-                region=params.get("region", "us-east-1"),
+                region=params.get("region", ""),
             )
         elif api_path == "/releaseClusterLock":
             result = release_lock(
                 cluster_id=params["cluster_id"],
                 user_id=user_id,
-                region=params.get("region", "us-east-1"),
+                region=params.get("region", ""),
             )
         else:
             result = {"error": f"Unknown apiPath: {api_path}"}

@@ -1,47 +1,44 @@
 # Project Structure
 
 ```
-.
-├── sdk/                          # Legacy ATX BaseAgent SDK wheel files (vendored, unused)
-├── src/redshift_agents/          # Main application code
-│   ├── orchestrator/
-│   │   └── orchestrator.py       # Orchestrator agent (workflow, locking, approval gates)
-│   ├── subagents/
-│   │   ├── assessment.py         # Assessment agent (cluster discovery, WLM analysis, metrics)
-│   │   ├── architecture.py       # Architecture agent (workgroup design, RPU sizing)
-│   │   └── execution.py          # Execution agent (create resources, migrate, validate)
-│   ├── tools/
-│   │   ├── redshift_tools.py     # Shared @tool functions (9 tools, boto3 calls)
-│   │   ├── audit_logger.py       # Structured JSON audit logging
-│   │   ├── cluster_lock.py       # DynamoDB cluster-level locking
-│   │   └── log_sharing.py        # Cross-account log sharing opt-in
-│   ├── iam/                      # Per-agent IAM policy documents (JSON)
-│   ├── tests/                    # Unit + property-based tests (68 tests, 7 files)
-│   │   ├── conftest.py           # Strands/AgentCore stubs for test env
-│   │   ├── test_redshift_tools.py
-│   │   ├── test_audit_logger.py
-│   │   ├── test_cluster_lock.py
-│   │   ├── test_assessment.py
-│   │   ├── test_architecture.py
-│   │   ├── test_execution.py
-│   │   ├── test_orchestrator.py
-│   │   └── requirements-test.txt
-│   ├── models.py                 # Dataclasses (Assessment/Architecture/Execution results, locks, audit)
-│   ├── deploy-agentcore.sh       # Deploy all agents via `agentcore launch`
-│   ├── requirements.txt
-│   └── .env.example
+src/redshift_agents/
+├── cdk/                         # CDK infrastructure (one-click deploy)
+│   ├── app.py                   # CDK app entry point
+│   ├── stack.py                 # Full stack: Lambda, Bedrock Agents, Cognito, DynamoDB
+│   └── cdk.json                 # CDK config (foundation model selection)
+├── lambdas/                     # Lambda action group handlers
+│   ├── assessment_handler.py    # listRedshiftClusters, analyzeRedshiftCluster, getClusterMetrics, getWlmConfiguration
+│   ├── execution_handler.py     # createClusterSnapshot, executeRedshiftQuery, createServerlessNamespace, createServerlessWorkgroup, restoreSnapshotToServerless, setupDataSharing
+│   └── cluster_lock_handler.py  # acquireClusterLock, releaseClusterLock
+├── schemas/                     # OpenAPI 3.0 schemas for Bedrock Agent action groups
+├── tools/                       # Tool implementations (plain Python, boto3 calls)
+│   ├── redshift_tools.py        # 10 Redshift/Serverless/CloudWatch tools
+│   ├── cluster_lock.py          # DynamoDB cluster locking
+│   └── audit_logger.py          # Structured JSON audit logging
+├── orchestrator/                # Orchestrator system prompt constant
+├── subagents/                   # Sub-agent system prompt constants (with embedded KB content)
+├── knowledge_base/              # Reference docs (embedded in agent prompts, kept for documentation)
+├── ui/                          # Streamlit chat UI with Cognito auth
+│   ├── app.py                   # Main UI (sign-in, chat, cluster memory)
+│   └── auth.py                  # Cognito auth utilities (JWT, Identity Pool)
+├── tests/                       # 101 tests (unit + 23 property-based)
+├── models.py                    # Dataclasses (Assessment/Architecture/Execution results, locks, audit)
+├── deploy-agentcore.sh          # Deploy script (runs cdk deploy)
+├── requirements.txt
+└── .env.example
 ```
 
 ## Architecture Patterns
 
-- **Agent pattern**: Each agent is a Python module with a `SYSTEM_PROMPT` constant and a `create_agent(tools=None)` factory returning a Strands `Agent`. Each has a `BedrockAgentCoreApp` entry point for `agentcore launch`.
-- **Tool pattern**: Shared tools in `tools/redshift_tools.py` use `@tool` from `strands.tools`. Tools are plain functions that call AWS APIs via boto3 and return dicts. Errors return `{"error": ...}`, never raise.
-- **Subagents import tools** from `..tools.redshift_tools` and pass them to `Agent(tools=[...])`.
-- **Orchestrator** delegates to subagents via Bedrock AgentCore `InvokeAgent` API (not direct tool imports). It also manages cluster locks and approval gates.
+- **Agent pattern**: Each agent is a Bedrock Agent (CfnAgent) with a system prompt constant in its Python module. System prompts include embedded knowledge base content.
+- **Tool pattern**: Tools in `tools/redshift_tools.py` are plain Python functions that call AWS APIs via boto3 and return dicts. Errors return `{"error": ...}`, never raise. Lambda handlers dispatch to these functions based on `apiPath`.
+- **Region resolution**: All tools use `_resolve_region()` — checks parameter first, then `AWS_REGION` env var, then falls back to `us-east-2`. No hardcoded regions.
+- **Orchestrator** is a Bedrock Supervisor Agent that delegates to sub-agents via `AssociateAgentCollaborator`. It has `listRedshiftClusters` and cluster lock as direct action groups.
+- **Memory**: All agents use `SESSION_SUMMARY` memory (30-day retention) with `cluster_id` as `memoryId` so conversation history persists per cluster across users and sessions.
 
 ## Conventions
 - System prompts are module-level constants named `*_SYSTEM_PROMPT`.
-- Factory functions: `create_agent(tools=None) -> Agent`.
 - Every tool accepts `region` and `user_id` for cross-region support and identity propagation.
 - Every tool emits audit events via `emit_audit_event(initiated_by=user_id)`.
 - Environment config via `.env` files (see `.env.example`).
+- CDK manages all infrastructure — no manual AWS console setup needed.

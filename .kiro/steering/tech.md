@@ -4,38 +4,46 @@
 - Python 3.12+
 
 ## Frameworks & SDKs
-- **Strands Agent** — Agent framework (`strands.Agent`). Tools use `@tool` decorator from `strands.tools`.
-- **Amazon Bedrock AgentCore** — Deployment runtime (`bedrock_agentcore.runtime.BedrockAgentCoreApp`). Agents deployed via `agentcore launch`.
-- **boto3 / botocore** — AWS SDK for Redshift, Redshift Serverless, Redshift Data API, CloudWatch, DynamoDB, and Bedrock Agent Runtime calls.
+- **Amazon Bedrock Agents** — Fully managed agents with action groups, multi-agent collaboration (supervisor/collaborator), and session memory.
+- **AWS CDK** — Infrastructure-as-code for one-click deployment (`cdk deploy`).
+- **boto3 / botocore** — AWS SDK for Redshift, Redshift Serverless, Redshift Data API, CloudWatch, DynamoDB, Cognito, and Bedrock Agent Runtime.
+- **Streamlit** — Chat UI with Cognito authentication.
 
 ## Key Dependencies
 - `python-json-logger` — Structured JSON logging for audit events
 - `python-dotenv` — Environment config
+- `aws-cdk-lib` — CDK infrastructure
 - `hypothesis` — Property-based testing (test dependency)
 
+## Region Configuration
+- All tools resolve region from `AWS_REGION` environment variable (default: `us-east-2`)
+- No hardcoded regions anywhere in the codebase
+- Tools use `_resolve_region()` helper: parameter → env var → fallback
+
 ## Deployment
-- Direct code deploy via `agentcore launch` (no Docker/containers)
-- One `agentcore launch` command per agent (orchestrator + 3 subagents)
-- Deploy script: `src/redshift_agents/deploy-agentcore.sh`
-- Per-agent IAM policies in `src/redshift_agents/iam/`
+- Single `cdk deploy` provisions everything: Lambda functions, Bedrock Agents, DynamoDB, Cognito, IAM roles
+- CDK stack: `src/redshift_agents/cdk/stack.py`
+- Foundation model configurable via CDK context in `cdk.json`
 
 ## Common Commands
 
 ```bash
-# Run unit tests (from src/redshift_agents)
-pytest tests/ -v
+# Deploy all infrastructure
+cd src/redshift_agents/cdk && cdk deploy
 
-# Deploy all agents to Bedrock AgentCore
-cd src/redshift_agents && ./deploy-agentcore.sh
+# Run unit tests (no AWS credentials needed)
+pytest src/redshift_agents/tests/ -v
 
-# Install test dependencies
-pip install -r src/redshift_agents/tests/requirements-test.txt
+# Run the Streamlit UI
+cd src/redshift_agents && streamlit run ui/app.py
+
+# Tear down
+cd src/redshift_agents/cdk && cdk destroy
 ```
 
 ## Testing
 - Framework: `pytest` with `pytest-cov`, `pytest-mock`, and `hypothesis`
-- 68 tests across 7 test files (30 unit + 19 property-based via hypothesis)
-- Tests mock all AWS calls via `unittest.mock.patch` on `boto3.client` — no AWS credentials needed locally.
-- `conftest.py` stubs `strands` and `bedrock_agentcore` modules for the test environment.
-- Property tests use `@settings(max_examples=100)` and validate 19 correctness properties.
-- Test deps are in `src/redshift_agents/tests/requirements-test.txt`.
+- 101 tests across 8 test files (unit + 23 property-based via hypothesis)
+- Tests mock all AWS calls via `unittest.mock.patch` on `boto3.client` — no AWS credentials needed locally
+- Property tests use `@settings(max_examples=100)` and validate 23 correctness properties
+- Test deps: `src/redshift_agents/tests/requirements-test.txt`

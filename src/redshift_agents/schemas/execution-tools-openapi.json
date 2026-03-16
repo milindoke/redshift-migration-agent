@@ -6,6 +6,79 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/createClusterSnapshot": {
+      "post": {
+        "operationId": "createClusterSnapshot",
+        "summary": "Create a manual snapshot of a Redshift cluster for migration",
+        "description": "Creates a new manual snapshot of the specified Redshift cluster, tagged for migration tracking.",
+        "parameters": [
+          {
+            "name": "cluster_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Redshift cluster identifier"
+          },
+          {
+            "name": "snapshot_identifier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Name for the snapshot (auto-generated if empty)"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region (defaults to deployment region)"
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identity of the person who initiated the request"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot details or error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "Snapshot creation details"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/executeRedshiftQuery": {
       "post": {
         "operationId": "executeRedshiftQuery",
@@ -16,28 +89,36 @@
             "name": "cluster_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Redshift cluster identifier"
           },
           {
             "name": "query",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "SQL query to execute"
           },
           {
             "name": "region",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "us-east-1" },
-            "description": "AWS region where cluster is located (default: us-east-1)"
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region where cluster is located (defaults to deployment region)"
           },
           {
             "name": "user_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identity of the person who initiated the request, used for audit traceability"
           }
         ],
@@ -48,8 +129,22 @@
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    { "type": "object", "description": "Query result with records" },
-                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                    {
+                      "type": "object",
+                      "description": "Query result with records"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
+                    }
                   ]
                 }
               }
@@ -68,35 +163,47 @@
             "name": "namespace_name",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Name for the new Serverless namespace"
           },
           {
             "name": "admin_username",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "admin" },
+            "schema": {
+              "type": "string",
+              "default": "admin"
+            },
             "description": "Admin user for the namespace (default: admin)"
           },
           {
             "name": "db_name",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "dev" },
+            "schema": {
+              "type": "string",
+              "default": "dev"
+            },
             "description": "Default database name (default: dev)"
           },
           {
             "name": "region",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "us-east-1" },
-            "description": "AWS region where the namespace will be created (default: us-east-1)"
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region where the namespace will be created (defaults to deployment region)"
           },
           {
             "name": "user_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identity of the person who initiated the request, used for audit traceability"
           }
         ],
@@ -107,8 +214,22 @@
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    { "type": "object", "description": "Namespace creation details" },
-                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                    {
+                      "type": "object",
+                      "description": "Namespace creation details"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
+                    }
                   ]
                 }
               }
@@ -127,42 +248,56 @@
             "name": "workgroup_name",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Name for the new Serverless workgroup"
           },
           {
             "name": "namespace_name",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Name of the namespace to associate the workgroup with"
           },
           {
             "name": "base_rpu",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 32 },
+            "schema": {
+              "type": "integer",
+              "default": 32
+            },
             "description": "Base Redshift Processing Units (default: 32)"
           },
           {
             "name": "max_rpu",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 512 },
+            "schema": {
+              "type": "integer",
+              "default": 512
+            },
             "description": "Maximum Redshift Processing Units (default: 512)"
           },
           {
             "name": "region",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "us-east-1" },
-            "description": "AWS region where the workgroup will be created (default: us-east-1)"
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region where the workgroup will be created (defaults to deployment region)"
           },
           {
             "name": "user_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identity of the person who initiated the request, used for audit traceability"
           }
         ],
@@ -173,8 +308,22 @@
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    { "type": "object", "description": "Workgroup creation details" },
-                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                    {
+                      "type": "object",
+                      "description": "Workgroup creation details"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
+                    }
                   ]
                 }
               }
@@ -193,28 +342,45 @@
             "name": "snapshot_identifier",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identifier of the cluster snapshot to restore"
           },
           {
             "name": "namespace_name",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Target Serverless namespace name"
+          },
+          {
+            "name": "workgroup_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Target Serverless workgroup name (optional)"
           },
           {
             "name": "region",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "us-east-1" },
-            "description": "AWS region where the Serverless namespace resides (default: us-east-1)"
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region (defaults to deployment region)"
           },
           {
             "name": "user_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identity of the person who initiated the request, used for audit traceability"
           }
         ],
@@ -225,8 +391,22 @@
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    { "type": "object", "description": "Snapshot restore details" },
-                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                    {
+                      "type": "object",
+                      "description": "Snapshot restore details"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
+                    }
                   ]
                 }
               }
@@ -245,35 +425,46 @@
             "name": "producer_namespace",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Name of the producer Serverless namespace"
           },
           {
             "name": "consumer_namespaces",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Comma-separated list of consumer namespace names"
           },
           {
             "name": "datashare_name",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "default_share" },
+            "schema": {
+              "type": "string",
+              "default": "default_share"
+            },
             "description": "Name for the datashare (default: default_share)"
           },
           {
             "name": "region",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "us-east-1" },
-            "description": "AWS region (default: us-east-1)"
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region (defaults to deployment region)"
           },
           {
             "name": "user_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identity of the person who initiated the request, used for audit traceability"
           }
         ],
@@ -284,8 +475,22 @@
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    { "type": "object", "description": "Data sharing configuration details" },
-                    { "type": "object", "properties": { "error": { "type": "string", "description": "Error message" } }, "required": ["error"] }
+                    {
+                      "type": "object",
+                      "description": "Data sharing configuration details"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "description": "Error message"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
+                    }
                   ]
                 }
               }

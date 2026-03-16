@@ -22,6 +22,9 @@ packaged.yaml
 
 # CDK
 cdk.out/
+_lambda_build/
+_lambda_deps/
+_index_lambda_build/
 
 # Deployment artifacts
 src/redshift_agents/packages/

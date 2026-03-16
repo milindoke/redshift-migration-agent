@@ -93,6 +93,9 @@ if "messages" not in st.session_state:
 if "user_id" not in st.session_state:
     st.session_state.user_id = ""
 
+if "active_cluster_id" not in st.session_state:
+    st.session_state.active_cluster_id = ""
+
 if "configured" not in st.session_state:
     st.session_state.configured = False
 
@@ -174,6 +177,7 @@ def _sign_out():
     st.session_state.access_token = None
     st.session_state.refresh_token = None
     st.session_state.user_id = ""
+    st.session_state.active_cluster_id = ""
     st.session_state.authenticated = False
     st.session_state.boto3_session = None
     st.session_state.messages = []
@@ -189,7 +193,12 @@ def invoke_orchestrator(message: str, user_id: str) -> str:
     """Send a message to the orchestrator and return the response."""
     # Use Identity Pool credentials if available, else default
     session = st.session_state.boto3_session or boto3
-    client = session.client("bedrock-agent-runtime", region_name=AWS_REGION)
+    from botocore.config import Config
+    client = session.client(
+        "bedrock-agent-runtime",
+        region_name=AWS_REGION,
+        config=Config(read_timeout=300, connect_timeout=10, retries={"max_attempts": 2}),
+    )
 
     # Build the input with identity propagation — user_id from Cognito JWT
     input_text = json.dumps({
@@ -197,12 +206,17 @@ def invoke_orchestrator(message: str, user_id: str) -> str:
         "user_id": user_id,
     })
 
+    # Use cluster_id as memoryId so history persists per cluster across users.
+    # Falls back to "default" if no cluster has been mentioned yet.
+    memory_id = st.session_state.get("active_cluster_id") or "general"
+
     try:
         response = client.invoke_agent(
             agentId=ORCHESTRATOR_AGENT_ID,
             agentAliasId=ORCHESTRATOR_AGENT_ALIAS_ID,
             sessionId=st.session_state.session_id,
             inputText=input_text,
+            memoryId=memory_id,
         )
 
         # Stream the response
@@ -292,6 +306,8 @@ with st.sidebar:
     st.caption(f"Agent: `{ORCHESTRATOR_AGENT_ID}`")
     st.caption(f"Region: `{AWS_REGION}`")
     st.caption(f"Session: `{st.session_state.session_id[:8]}...`")
+    if st.session_state.active_cluster_id:
+        st.caption(f"Cluster: `{st.session_state.active_cluster_id}`")
 
     st.divider()
 
@@ -336,6 +352,21 @@ for msg in st.session_state.messages:
 if prompt := st.chat_input("Describe your modernization request..."):
     # user_id is always from Cognito JWT — cannot be overridden
     user_id = st.session_state.user_id
+
+    # Extract cluster_id from the message if mentioned
+    # Looks for patterns like "cluster my-cluster-01" or known cluster names
+    import re
+    cluster_match = re.search(r'cluster[- _]?(?:id)?[:\s]+([a-zA-Z0-9][a-zA-Z0-9._-]+)', prompt, re.IGNORECASE)
+    if not cluster_match:
+        # Also match "modernize <cluster-name>" or "<cluster-name> in <region>"
+        cluster_match = re.search(r'(?:modernize|migrate|assess|analyze)\s+([a-zA-Z][a-zA-Z0-9._-]+)', prompt, re.IGNORECASE)
+    if cluster_match:
+        new_cluster = cluster_match.group(1)
+        if new_cluster != st.session_state.active_cluster_id:
+            # Cluster switched — start fresh session so context doesn't bleed
+            st.session_state.active_cluster_id = new_cluster
+            st.session_state.session_id = str(uuid.uuid4())
+            st.session_state.messages = []
 
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})

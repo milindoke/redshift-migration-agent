@@ -16,14 +16,18 @@
             "name": "region",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "default": "us-east-1" },
-            "description": "AWS region to list clusters from (default: us-east-1)"
+            "schema": {
+              "type": "string"
+            },
+            "description": "AWS region to list clusters from (defaults to deployment region)"
           },
           {
             "name": "user_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Identity of the person who initiated the request"
           }
         ],
@@ -34,8 +38,23 @@
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    { "type": "array", "items": { "type": "object" } },
-                    { "type": "object", "properties": { "error": { "type": "string" } }, "required": ["error"] }
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
+                    }
                   ]
                 }
               }

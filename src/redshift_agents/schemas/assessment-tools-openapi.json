@@ -26,10 +26,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "us-east-1"
+              "type": "string"
             },
-            "description": "AWS region where cluster is located (default: us-east-1)"
+            "description": "AWS region where cluster is located (defaults to deployment region)"
           },
           {
             "name": "user_id",
@@ -60,7 +59,9 @@
                           "description": "Error message"
                         }
                       },
-                      "required": ["error"]
+                      "required": [
+                        "error"
+                      ]
                     }
                   ]
                 }
@@ -90,10 +91,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "us-east-1"
+              "type": "string"
             },
-            "description": "AWS region where cluster is located (default: us-east-1)"
+            "description": "AWS region where cluster is located (defaults to deployment region)"
           },
           {
             "name": "hours",
@@ -134,7 +134,9 @@
                           "description": "Error message"
                         }
                       },
-                      "required": ["error"]
+                      "required": [
+                        "error"
+                      ]
                     }
                   ]
                 }
@@ -164,10 +166,9 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "default": "us-east-1"
+              "type": "string"
             },
-            "description": "AWS region where cluster is located (default: us-east-1)"
+            "description": "AWS region where cluster is located (defaults to deployment region)"
           },
           {
             "name": "user_id",
@@ -198,7 +199,9 @@
                           "description": "Error message"
                         }
                       },
-                      "required": ["error"]
+                      "required": [
+                        "error"
+                      ]
                     }
                   ]
                 }

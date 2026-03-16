@@ -21,4 +21,5 @@ Two migration paths are supported:
 - Cluster-level locking via DynamoDB prevents concurrent operations on the same cluster.
 - End-to-end identity propagation: user_id flows from orchestrator → subagent → tool → Redshift Data API → CloudTrail.
 - Approval gates between phases: orchestrator will not advance without explicit user approval.
-- Default AWS region is `us-east-2`; agents can operate on clusters in any region.
+- Default AWS region is configured via `AWS_REGION` environment variable (default: `us-east-2`). No hardcoded regions in code. Users can switch regions in conversation and the agent remembers the selection.
+- Cluster-level memory: agents remember previous conversations per cluster (30-day retention). Any user working on the same cluster sees the shared history.

@@ -1,4 +1,0 @@
-# file: /Users/milindo/Library/CloudStorage/OneDrive-amazon.com/Kiro projects/migrateRedshiftProvisionedToServerless/src/redshift_agents/tools/audit_logger.py
-# hypothesis_version: 6.141.1
-
-['AWS_ACCOUNT_ID', 'AWS_REGION', 'Account', 'agent_start', 'audit_event', 'error', 'phase_complete', 'phase_start', 'stderr', 'stream', 'sts', 'tool_invocation', 'unknown', 'us-east-2', 'workflow_complete', 'workflow_start']

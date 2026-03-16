@@ -1,4 +1,0 @@
-# file: /Users/milindo/Library/CloudStorage/OneDrive-amazon.com/KiroProjects/migrateRedshiftProvisionedToServerless/src/redshift_agents/tools/__init__.py
-# hypothesis_version: 6.141.1
-
-['get_cluster_metrics', 'setup_data_sharing']

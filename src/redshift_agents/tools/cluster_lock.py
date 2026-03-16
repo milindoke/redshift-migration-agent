@@ -27,7 +27,7 @@ TTL_SECONDS = 24 * 60 * 60  # 24 hours
 def acquire_lock(
     cluster_id: str,
     user_id: str,
-    region: str = "us-east-2",
+    region: str = "",
 ) -> Dict:
     """Attempt to acquire a cluster-level lock.
 
@@ -52,6 +52,7 @@ def acquire_lock(
 
             {"error": ..., "cluster_id": ..., "region": ...}
     """
+    region = region or os.getenv("AWS_REGION", "us-east-2")
     now = datetime.now(timezone.utc)
     acquired_at = now.isoformat()
     ttl_epoch = int(time.time()) + TTL_SECONDS
@@ -113,7 +114,7 @@ def acquire_lock(
 def release_lock(
     cluster_id: str,
     user_id: str,
-    region: str = "us-east-2",
+    region: str = "",
 ) -> Dict:
     """Release a cluster-level lock.
 
@@ -135,6 +136,7 @@ def release_lock(
 
             {"released": False, "error": ..., "cluster_id": ...}
     """
+    region = region or os.getenv("AWS_REGION", "us-east-2")
     dynamodb = boto3.client("dynamodb", region_name=region)
 
     try:
