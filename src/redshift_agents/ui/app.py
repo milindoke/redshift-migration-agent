@@ -41,6 +41,9 @@ ORCHESTRATOR_AGENT_ID = os.getenv(
 ORCHESTRATOR_AGENT_ALIAS_ID = os.getenv(
     "ORCHESTRATOR_AGENT_ALIAS_ID", "TSTALIASID"
 )
+ASSESSMENT_AGENT_ID = os.getenv("ASSESSMENT_AGENT_ID", "")
+ARCHITECTURE_AGENT_ID = os.getenv("ARCHITECTURE_AGENT_ID", "")
+EXECUTION_AGENT_ID = os.getenv("EXECUTION_AGENT_ID", "")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
 
 # ---------------------------------------------------------------------------
@@ -189,6 +192,36 @@ def _sign_out():
 # ---------------------------------------------------------------------------
 
 
+def forget_cluster_memory(cluster_id: str) -> str:
+    """Delete SESSION_SUMMARY memory for a cluster across all 4 agents."""
+    session = st.session_state.boto3_session or boto3
+    client = session.client("bedrock-agent-runtime", region_name=AWS_REGION)
+
+    agent_ids = [
+        aid for aid in [
+            ORCHESTRATOR_AGENT_ID,
+            ASSESSMENT_AGENT_ID,
+            ARCHITECTURE_AGENT_ID,
+            EXECUTION_AGENT_ID,
+        ] if aid
+    ]
+
+    errors = []
+    for agent_id in agent_ids:
+        try:
+            client.delete_agent_memory(
+                agentId=agent_id,
+                agentAliasId="TSTALIASID",  # memory is alias-independent but API requires it
+                memoryId=cluster_id,
+            )
+        except Exception as e:
+            errors.append(f"{agent_id}: {e}")
+
+    if errors:
+        return "⚠️ Some agents could not be cleared:\n" + "\n".join(errors)
+    return f"✅ Memory cleared for cluster `{cluster_id}` across all agents."
+
+
 def invoke_orchestrator(message: str, user_id: str) -> str:
     """Send a message to the orchestrator and return the response."""
     # Use Identity Pool credentials if available, else default
@@ -308,6 +341,11 @@ with st.sidebar:
     st.caption(f"Session: `{st.session_state.session_id[:8]}...`")
     if st.session_state.active_cluster_id:
         st.caption(f"Cluster: `{st.session_state.active_cluster_id}`")
+        if st.button("🗑️ Forget Cluster Memory", use_container_width=True):
+            result = forget_cluster_memory(st.session_state.active_cluster_id)
+            st.session_state.messages = []
+            st.session_state.session_id = str(uuid.uuid4())
+            st.toast(result)
 
     st.divider()
 

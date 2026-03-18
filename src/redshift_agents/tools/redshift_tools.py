@@ -299,21 +299,51 @@ def get_wlm_configuration(
         details={"tool": "get_wlm_configuration"},
     )
 
-    sql = (
-        "SELECT "
-        "trim(name) as queue_name, "
-        "service_class, "
-        "num_query_tasks as concurrency, "
-        "0 as queries_waiting, "
-        "0 as avg_wait_time_ms, "
-        "0 as avg_exec_time_ms, "
-        "0.0 as wait_to_exec_ratio, "
-        "0 as queries_spilling_to_disk, "
-        "0.0 as disk_spill_mb, "
-        "0.0 as saturation_pct "
-        "FROM STV_WLM_SERVICE_CLASS_CONFIG "
-        "WHERE service_class > 4"
-    )
+    sql = """
+SELECT
+    trim(cfg.name) AS queue_name,
+    cfg.service_class,
+    cfg.num_query_tasks AS concurrency,
+    COALESCE(qs.queries_waiting, 0) AS queries_waiting,
+    COALESCE(hist.avg_wait_time_ms, 0) AS avg_wait_time_ms,
+    COALESCE(hist.avg_exec_time_ms, 0) AS avg_exec_time_ms,
+    CASE
+        WHEN COALESCE(hist.avg_exec_time_ms, 0) = 0 THEN 0.0
+        ELSE ROUND(COALESCE(hist.avg_wait_time_ms, 0)::DECIMAL / hist.avg_exec_time_ms, 2)
+    END AS wait_to_exec_ratio,
+    COALESCE(spill.queries_spilling, 0) AS queries_spilling_to_disk,
+    COALESCE(spill.total_spill_mb, 0.0) AS disk_spill_mb,
+    CASE
+        WHEN cfg.num_query_tasks = 0 THEN 0.0
+        ELSE ROUND(COALESCE(qs.queries_running, 0)::DECIMAL / cfg.num_query_tasks * 100, 1)
+    END AS saturation_pct
+FROM STV_WLM_SERVICE_CLASS_CONFIG cfg
+LEFT JOIN (
+    SELECT service_class,
+           SUM(CASE WHEN state = 'QueuedWaiting' THEN 1 ELSE 0 END) AS queries_waiting,
+           SUM(CASE WHEN state = 'Executing' THEN 1 ELSE 0 END) AS queries_running
+    FROM STV_WLM_QUERY_STATE
+    GROUP BY service_class
+) qs ON cfg.service_class = qs.service_class
+LEFT JOIN (
+    SELECT service_class,
+           ROUND(AVG(total_queue_time) / 1000.0, 2) AS avg_wait_time_ms,
+           ROUND(AVG(total_exec_time) / 1000.0, 2) AS avg_exec_time_ms
+    FROM STL_WLM_QUERY
+    WHERE total_exec_time > 0
+    GROUP BY service_class
+) hist ON cfg.service_class = hist.service_class
+LEFT JOIN (
+    SELECT service_class,
+           COUNT(*) AS queries_spilling,
+           ROUND(SUM(bytes_to_disk) / 1024.0 / 1024.0, 2) AS total_spill_mb
+    FROM SVL_QUERY_SUMMARY
+    WHERE bytes_to_disk > 0
+    GROUP BY service_class
+) spill ON cfg.service_class = spill.service_class
+WHERE (cfg.service_class BETWEEN 6 AND 13 OR cfg.service_class BETWEEN 100 AND 107)
+ORDER BY cfg.service_class
+"""
 
     try:
         # Step 1: Execute the statement via Redshift Data API

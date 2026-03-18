@@ -255,6 +255,12 @@ class RedshiftModernizationStack(Stack):
         )
         role.add_to_policy(
             iam.PolicyStatement(
+                actions=["redshift:GetClusterCredentialsWithIAM"],
+                resources=["*"],
+            )
+        )
+        role.add_to_policy(
+            iam.PolicyStatement(
                 actions=["cloudwatch:GetMetricStatistics"],
                 resources=["*"],
             )
@@ -419,18 +425,22 @@ class RedshiftModernizationStack(Stack):
         )
 
         # S3 Vector Bucket — stores the embeddings
+        # Names include stack name suffix to avoid conflicts on re-deploy
+        vb_name = f"rs-arch-kb-{self.stack_name[:20].lower().replace('stack', '').strip('-')}"
+        idx_name = "rs-arch-kb-index"
+
         vector_bucket = s3vectors.CfnVectorBucket(
             self,
             "ArchitectureVectorBucket",
-            vector_bucket_name="redshift-architecture-kb-vectors",
+            vector_bucket_name=vb_name,
         )
 
         # Vector Index — Titan embed v2 produces 1024-dim FLOAT32 vectors
         vector_index = s3vectors.CfnIndex(
             self,
             "ArchitectureVectorIndex",
-            vector_bucket_name="redshift-architecture-kb-vectors",
-            index_name="redshift-architecture-kb-index",
+            vector_bucket_name=vb_name,
+            index_name=idx_name,
             data_type="float32",
             dimension=1024,
             distance_metric="cosine",
@@ -465,8 +475,8 @@ class RedshiftModernizationStack(Stack):
                     "s3vectors:GetVectorBucket",
                 ],
                 resources=[
-                    f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/redshift-architecture-kb-vectors",
-                    f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/redshift-architecture-kb-vectors/index/redshift-architecture-kb-index",
+                    f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/{vb_name}",
+                    f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/{vb_name}/index/{idx_name}",
                 ],
             )
         )
@@ -475,7 +485,7 @@ class RedshiftModernizationStack(Stack):
         kb = cdk.aws_bedrock.CfnKnowledgeBase(
             self,
             "ArchitectureKB",
-            name="kb-redshift-sizing-for-project",
+            name=f"kb-redshift-sizing-{self.stack_name[:20].lower().replace('stack', '').strip('-')}",
             role_arn=kb_role.role_arn,
             knowledge_base_configuration=cdk.aws_bedrock.CfnKnowledgeBase.KnowledgeBaseConfigurationProperty(
                 type="VECTOR",
@@ -833,7 +843,7 @@ class RedshiftModernizationStack(Stack):
             self,
             "UserPool",
             user_pool_name="redshift-modernization-users",
-            self_sign_up_enabled=True,
+            self_sign_up_enabled=False,  # Admin-only user creation — prevents unauthorized self-registration
             sign_in_aliases=cognito.SignInAliases(email=True),
             auto_verify=cognito.AutoVerifiedAttrs(email=True),
             password_policy=cognito.PasswordPolicy(
@@ -1034,6 +1044,24 @@ class RedshiftModernizationStack(Stack):
             "OrchestratorAliasId",
             value=agents["orchestrator_alias"].attr_agent_alias_id,
             description="Bedrock Orchestrator Agent Alias ID",
+        )
+        CfnOutput(
+            self,
+            "AssessmentAgentId",
+            value=agents["assessment"].attr_agent_id,
+            description="Bedrock Assessment Agent ID",
+        )
+        CfnOutput(
+            self,
+            "ArchitectureAgentId",
+            value=agents["architecture"].attr_agent_id,
+            description="Bedrock Architecture Agent ID",
+        )
+        CfnOutput(
+            self,
+            "ExecutionAgentId",
+            value=agents["execution"].attr_agent_id,
+            description="Bedrock Execution Agent ID",
         )
         CfnOutput(
             self,
