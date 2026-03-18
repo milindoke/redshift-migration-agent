@@ -7,7 +7,7 @@
 - **Amazon Bedrock Agents** — Fully managed agents with action groups, multi-agent collaboration (supervisor/collaborator), and session memory.
 - **AWS CDK** — Infrastructure-as-code for one-click deployment (`cdk deploy`).
 - **boto3 / botocore** — AWS SDK for Redshift, Redshift Serverless, Redshift Data API, CloudWatch, DynamoDB, Cognito, and Bedrock Agent Runtime.
-- **Streamlit** — Chat UI with Cognito authentication.
+- **Streamlit** — Chat UI with Cognito authentication, agent reasoning trace, and cluster memory management.
 
 ## Key Dependencies
 - `python-json-logger` — Structured JSON logging for audit events

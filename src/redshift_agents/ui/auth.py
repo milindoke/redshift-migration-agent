@@ -52,30 +52,27 @@ def decode_jwt_payload(token: str) -> dict[str, Any]:
 
 
 def extract_user_id(id_token: str) -> str:
-    """Extract user_id from a Cognito ID token.
+    """Extract a human-readable user identifier from a Cognito ID token.
 
-    Returns ``cognito:username`` claim if present, otherwise falls back
-    to ``email``.  Raises ``ValueError`` if neither claim exists.
+    Delegates to ``extract_user_id_from_payload`` — prefers email, then
+    preferred_username, then cognito:username, then sub.
     """
     payload = decode_jwt_payload(id_token)
     return extract_user_id_from_payload(payload)
 
 
 def extract_user_id_from_payload(payload: dict[str, Any]) -> str:
-    """Extract user_id from an already-decoded JWT payload dict.
+    """Extract a human-readable user identifier from an already-decoded JWT payload.
 
-    Returns ``cognito:username`` if present, else ``email``.
-    Raises ``ValueError`` when neither claim is found.
+    Preference order: email → preferred_username → cognito:username (may be a UUID
+    for admin-created users) → sub.
     """
-    username = payload.get("cognito:username")
-    if username:
-        return str(username)
+    for claim in ("email", "preferred_username", "cognito:username", "sub"):
+        value = payload.get(claim)
+        if value:
+            return str(value)
 
-    email = payload.get("email")
-    if email:
-        return str(email)
-
-    raise ValueError("JWT payload contains neither 'cognito:username' nor 'email'")
+    raise ValueError("JWT payload contains no usable identity claim")
 
 
 # ---------------------------------------------------------------------------

@@ -222,9 +222,74 @@ def forget_cluster_memory(cluster_id: str) -> str:
     return f"✅ Memory cleared for cluster `{cluster_id}` across all agents."
 
 
-def invoke_orchestrator(message: str, user_id: str) -> str:
-    """Send a message to the orchestrator and return the response."""
-    # Use Identity Pool credentials if available, else default
+def _extract_trace_steps(trace_event: dict) -> list[dict]:
+    """Pull reasoning steps out of a Bedrock Agent trace event.
+
+    Returns a list of dicts with keys: type, text, (optional) tool, input, output.
+    """
+    steps = []
+    trace = trace_event.get("trace", {})
+
+    # Orchestration trace — reasoning + tool calls
+    orch = trace.get("orchestrationTrace", {})
+
+    rationale = orch.get("rationale", {}).get("text", "")
+    if rationale:
+        steps.append({"type": "reasoning", "text": rationale})
+
+    inv = orch.get("invocationInput", {})
+    action_inv = inv.get("actionGroupInvocationInput", {})
+    agent_inv = inv.get("agentCollaboratorInvocationInput", {})
+    kb_inv = inv.get("knowledgeBaseLookupInput", {})
+
+    if action_inv:
+        steps.append({
+            "type": "tool_call",
+            "tool": action_inv.get("actionGroupName", "") + "/" + action_inv.get("apiPath", ""),
+            "input": json.dumps(action_inv.get("requestBody", {}).get("content", {}), indent=2),
+        })
+    if agent_inv:
+        steps.append({
+            "type": "agent_call",
+            "tool": agent_inv.get("agentCollaboratorName", "sub-agent"),
+            "input": agent_inv.get("input", {}).get("text", ""),
+        })
+    if kb_inv:
+        steps.append({
+            "type": "kb_lookup",
+            "text": kb_inv.get("text", ""),
+        })
+
+    obs = orch.get("observation", {})
+    action_result = obs.get("actionGroupInvocationOutput", {})
+    agent_result = obs.get("agentCollaboratorInvocationOutput", {})
+    kb_result = obs.get("knowledgeBaseLookupOutput", {})
+
+    if action_result:
+        steps.append({
+            "type": "tool_result",
+            "output": action_result.get("text", ""),
+        })
+    if agent_result:
+        steps.append({
+            "type": "agent_result",
+            "tool": agent_result.get("agentCollaboratorName", "sub-agent"),
+            "output": agent_result.get("output", {}).get("text", ""),
+        })
+    if kb_result:
+        refs = kb_result.get("retrievedReferences", [])
+        snippets = [r.get("content", {}).get("text", "") for r in refs if r.get("content", {}).get("text")]
+        if snippets:
+            steps.append({
+                "type": "kb_result",
+                "output": "\n\n---\n\n".join(snippets[:3]),  # cap at 3 snippets
+            })
+
+    return steps
+
+
+def invoke_orchestrator(message: str, user_id: str) -> tuple[str, list[dict]]:
+    """Send a message to the orchestrator and return (response_text, trace_steps)."""
     session = st.session_state.boto3_session or boto3
     from botocore.config import Config
     client = session.client(
@@ -233,14 +298,7 @@ def invoke_orchestrator(message: str, user_id: str) -> str:
         config=Config(read_timeout=300, connect_timeout=10, retries={"max_attempts": 2}),
     )
 
-    # Build the input with identity propagation — user_id from Cognito JWT
-    input_text = json.dumps({
-        "message": message,
-        "user_id": user_id,
-    })
-
-    # Use cluster_id as memoryId so history persists per cluster across users.
-    # Falls back to "default" if no cluster has been mentioned yet.
+    input_text = json.dumps({"message": message, "user_id": user_id})
     memory_id = st.session_state.get("active_cluster_id") or "general"
 
     try:
@@ -250,31 +308,34 @@ def invoke_orchestrator(message: str, user_id: str) -> str:
             sessionId=st.session_state.session_id,
             inputText=input_text,
             memoryId=memory_id,
+            enableTrace=True,
         )
 
-        # Stream the response
         result_text = ""
+        trace_steps = []
+
         if "completion" in response:
             for event in response["completion"]:
                 if "chunk" in event:
                     chunk_bytes = event["chunk"].get("bytes", b"")
                     result_text += chunk_bytes.decode("utf-8", errors="replace")
+                if "trace" in event:
+                    trace_steps.extend(_extract_trace_steps(event))
 
-        return result_text if result_text else "No response from orchestrator."
+        return result_text or "No response from orchestrator.", trace_steps
 
     except client.exceptions.ResourceNotFoundException:
         return (
             "⚠️ Orchestrator agent not found. Make sure you've deployed the agents "
-            "with `cdk deploy` and set the `ORCHESTRATOR_AGENT_ID` "
-            "environment variable."
+            "with `cdk deploy` and set the `ORCHESTRATOR_AGENT_ID` environment variable.",
+            [],
         )
     except Exception as e:
         error_msg = str(e)
-        # If token expired, attempt refresh
         if "expired" in error_msg.lower() or "token" in error_msg.lower():
             if _do_token_refresh():
                 return invoke_orchestrator(message, user_id)
-        return f"⚠️ Error communicating with orchestrator: {error_msg}"
+        return f"⚠️ Error communicating with orchestrator: {error_msg}", []
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +436,71 @@ with st.sidebar:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_TRACE_ICONS = {
+    "reasoning": "🧠",
+    "tool_call": "🔧",
+    "tool_result": "📤",
+    "agent_call": "🤝",
+    "agent_result": "💬",
+    "kb_lookup": "📚",
+    "kb_result": "📖",
+}
+
+
+def _render_trace(steps: list[dict]) -> None:
+    """Render agent trace steps inside a collapsible expander."""
+    if not steps:
+        return
+    with st.expander(f"🔍 Agent reasoning ({len(steps)} steps)", expanded=False):
+        for i, step in enumerate(steps, 1):
+            stype = step.get("type", "")
+            icon = _TRACE_ICONS.get(stype, "•")
+
+            if stype == "reasoning":
+                st.markdown(f"**{icon} Step {i} — Reasoning**")
+                st.markdown(step["text"])
+
+            elif stype == "tool_call":
+                st.markdown(f"**{icon} Step {i} — Tool call:** `{step['tool']}`")
+                if step.get("input"):
+                    st.code(step["input"], language="json")
+
+            elif stype == "tool_result":
+                st.markdown(f"**{icon} Step {i} — Tool result**")
+                output = step.get("output", "")
+                # Try to pretty-print JSON, fall back to plain text
+                try:
+                    st.code(json.dumps(json.loads(output), indent=2), language="json")
+                except Exception:
+                    st.text(output[:2000])  # cap very long outputs
+
+            elif stype == "agent_call":
+                st.markdown(f"**{icon} Step {i} — Delegating to:** `{step['tool']}`")
+                if step.get("input"):
+                    st.markdown(f"> {step['input']}")
+
+            elif stype == "agent_result":
+                st.markdown(f"**{icon} Step {i} — Response from:** `{step['tool']}`")
+                output = step.get("output", "")
+                if output:
+                    st.markdown(output[:3000])
+
+            elif stype == "kb_lookup":
+                st.markdown(f"**{icon} Step {i} — Knowledge base lookup**")
+                st.markdown(f"> {step.get('text', '')}")
+
+            elif stype == "kb_result":
+                st.markdown(f"**{icon} Step {i} — Knowledge base results**")
+                st.markdown(step.get("output", ""))
+
+            if i < len(steps):
+                st.divider()
+
+
+# ---------------------------------------------------------------------------
 # Main chat area
 # ---------------------------------------------------------------------------
 
@@ -384,6 +510,8 @@ st.caption("Migrate your Redshift Provisioned cluster to Serverless")
 # Display chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
+        if msg["role"] == "assistant" and msg.get("trace"):
+            _render_trace(msg["trace"])
         st.markdown(msg["content"])
 
 # Chat input
@@ -414,11 +542,12 @@ if prompt := st.chat_input("Describe your modernization request..."):
     # Get orchestrator response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            response = invoke_orchestrator(prompt, user_id)
+            response, trace_steps = invoke_orchestrator(prompt, user_id)
+        _render_trace(trace_steps)
         st.markdown(response)
 
-    # Add assistant message
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    # Add assistant message (store trace for history replay)
+    st.session_state.messages.append({"role": "assistant", "content": response, "trace": trace_steps})
 
 
 # ---------------------------------------------------------------------------

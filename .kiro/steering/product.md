@@ -23,3 +23,5 @@ Two migration paths are supported:
 - Approval gates between phases: orchestrator will not advance without explicit user approval.
 - Default AWS region is configured via `AWS_REGION` environment variable (default: `us-east-2`). No hardcoded regions in code. Users can switch regions in conversation and the agent remembers the selection.
 - Cluster-level memory: agents remember previous conversations per cluster (30-day retention). Any user working on the same cluster sees the shared history.
+- UI displays the user's email (from JWT `email` claim) rather than the Cognito `sub` UUID.
+- Agent reasoning trace is visible in the UI: every response includes a collapsible expander showing rationale, tool calls, sub-agent delegation, and KB lookups (`enableTrace=True`).

@@ -9,19 +9,27 @@ AI-powered multi-agent system for migrating Amazon Redshift Provisioned clusters
 - **Workgroup design**: Maps WLM queues to Serverless workgroups with RPU sizing
 - **Automated execution**: Creates namespaces/workgroups, snapshots, restores, data sharing, validation
 - **Two migration paths**: Multi-workgroup split or 1:1 migration
-- **Cognito authentication**: JWT-based identity, no manual user ID entry
+- **Cognito authentication**: JWT-based identity; UI displays email (not UUID)
 - **Cluster-level memory**: Agents remember previous conversations per cluster
+- **Agent reasoning trace**: UI surfaces the agent's thinking steps, tool calls, sub-agent delegation, and KB lookups in a collapsible expander per response
+- **Forget cluster memory**: One-click button in the sidebar wipes SESSION_SUMMARY memory across all 4 agents for the active cluster
 
 ## Architecture
 
 - **Orchestrator** (Supervisor Agent) — coordinates workflow, approval gates, cluster locks, lists clusters directly
-- **Assessment Agent** — cluster config analysis, CloudWatch metrics, WLM queue contention
+- **Assessment Agent** — cluster config analysis, CloudWatch metrics, WLM queue contention (service classes 6–13 manual, 100–107 auto WLM)
 - **Architecture Agent** — workgroup design, RPU sizing, migration pattern selection; backed by a Bedrock Knowledge Base (S3 Vectors) with Redshift sizing guidance
 - **Execution Agent** — create resources, snapshot/restore, data sharing, validation
 
 All infrastructure provisioned via AWS CDK. Single `cdk deploy` — no manual setup.
 
-## Knowledge Base
+## UI Features
+
+- **Sign-in**: Cognito USER_PASSWORD_AUTH with NEW_PASSWORD_REQUIRED challenge support
+- **Display name**: Shows email (or preferred_username) from JWT — not the Cognito UUID sub claim
+- **Agent reasoning trace**: Every assistant response includes a collapsible "🔍 Agent reasoning" expander showing the model's rationale, tool calls + results, sub-agent delegation, and KB lookups
+- **Forget cluster memory**: "🗑️ Forget Cluster Memory" button in the sidebar calls `DeleteAgentMemory` on all 4 agents for the active cluster, then resets the local session
+- **Cluster auto-detection**: Extracts cluster ID from user messages and switches memory context automatically
 
 The Architecture Agent uses a Bedrock Knowledge Base (S3 Vectors storage, Titan Embed v2) for Redshift sizing guidance. CDK fully automates this:
 
@@ -32,11 +40,11 @@ The Architecture Agent uses a Bedrock Knowledge Base (S3 Vectors storage, Titan 
 
 To add new KB content: drop files into `knowledge_base/architecture/` and run `cdk deploy`.
 
-## Region Configuration
+## Knowledge Base
 
 All tools resolve region from the `AWS_REGION` environment variable (default: `us-east-2`). No hardcoded regions. Users can request a different region in conversation and the agent remembers it for the session.
 
-## Quick Start
+## Region Configuration
 
 ### Prerequisites
 - AWS CLI configured with credentials

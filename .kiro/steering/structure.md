@@ -22,8 +22,8 @@ src/redshift_agents/
 │   ├── assessment/              # Docs for reference (embedded in assessment agent prompt)
 │   └── execution/               # Docs for reference (embedded in execution agent prompt)
 ├── ui/                          # Streamlit chat UI with Cognito auth
-│   ├── app.py                   # Main UI (sign-in, chat, cluster memory)
-│   └── auth.py                  # Cognito auth utilities (JWT, Identity Pool)
+│   ├── app.py                   # Main UI (sign-in, chat, agent trace, cluster memory, forget memory)
+│   └── auth.py                  # Cognito auth utilities (JWT decode, email display, Identity Pool)
 ├── tests/                       # 101 tests (unit + 23 property-based)
 ├── models.py                    # Dataclasses (Assessment/Architecture/Execution results, locks, audit)
 ├── deploy.sh                    # Deploy script (runs cdk deploy)
@@ -39,6 +39,8 @@ src/redshift_agents/
 - **Region resolution**: All tools use `_resolve_region()` — checks parameter first, then `AWS_REGION` env var, then falls back to `us-east-2`. No hardcoded regions.
 - **Orchestrator** is a Bedrock Supervisor Agent that delegates to sub-agents via `AssociateAgentCollaborator`. It has `listRedshiftClusters` and cluster lock as direct action groups.
 - **Memory**: All agents use `SESSION_SUMMARY` memory (30-day retention) with `cluster_id` as `memoryId` so conversation history persists per cluster across users and sessions.
+- **Agent trace**: `invoke_agent` is called with `enableTrace=True`. The UI parses `orchestrationTrace` events (rationale, invocationInput, observation) and renders them in a collapsible expander per response.
+- **User display**: `auth.py` `extract_user_id_from_payload` prefers `email` → `preferred_username` → `cognito:username` → `sub` so the UI shows a human-readable name instead of the Cognito UUID.
 
 ## Conventions
 - System prompts are module-level constants named `*_SYSTEM_PROMPT`.
