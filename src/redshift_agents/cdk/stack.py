@@ -23,12 +23,17 @@ from aws_cdk import aws_cognito as cognito
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as _lambda
+from aws_cdk import aws_s3 as s3
+from aws_cdk import aws_s3_deployment as s3deploy
+from aws_cdk import aws_s3vectors as s3vectors
+from aws_cdk import custom_resources as cr
 from constructs import Construct
 
 # Resolve paths relative to this file
 _CDK_DIR = Path(__file__).resolve().parent
 _SRC_DIR = _CDK_DIR.parent  # src/redshift_agents
 _SCHEMAS_DIR = _SRC_DIR / "schemas"
+_KB_DIR = _SRC_DIR / "knowledge_base"
 
 # Directories/files to exclude from Lambda deployment packages
 _LAMBDA_ASSET_EXCLUDES = [
@@ -175,6 +180,9 @@ class RedshiftModernizationStack(Stack):
             "OrchestratorAgentRole", foundation_model, [cluster_lock_lambda, assessment_lambda]
         )
 
+        # ----- Architecture Knowledge Base -----
+        architecture_kb_id, _ = self._create_architecture_kb(architecture_agent_role)
+
         # ----- Task 5.5: Bedrock Agent resources -----
         agents = self._create_bedrock_agents(
             foundation_model=foundation_model,
@@ -185,6 +193,7 @@ class RedshiftModernizationStack(Stack):
             architecture_agent_role=architecture_agent_role,
             execution_agent_role=execution_agent_role,
             orchestrator_agent_role=orchestrator_agent_role,
+            architecture_kb_id=architecture_kb_id,
         )
 
         # ----- Task 5.7 + 5.8: Cognito resources -----
@@ -381,6 +390,178 @@ class RedshiftModernizationStack(Stack):
         return role
 
     # -----------------------------------------------------------------------
+    # Knowledge Base: Architecture sizing docs
+    # -----------------------------------------------------------------------
+    def _create_architecture_kb(
+        self, architecture_agent_role: iam.Role
+    ) -> tuple[str, str]:
+        """Create S3 bucket, vector bucket + index, upload KB docs, create
+        Bedrock KB with S3_VECTORS storage, and attach to architecture agent.
+
+        Returns (kb_id, kb_arn).
+        """
+        # S3 bucket to hold KB source documents
+        kb_bucket = s3.Bucket(
+            self,
+            "ArchitectureKBBucket",
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+            enforce_ssl=True,
+        )
+
+        # Upload all architecture knowledge base docs to the bucket
+        s3deploy.BucketDeployment(
+            self,
+            "ArchitectureKBDocs",
+            sources=[s3deploy.Source.asset(str(_KB_DIR / "architecture"))],
+            destination_bucket=kb_bucket,
+            destination_key_prefix="redshift-kb-docs/",
+        )
+
+        # S3 Vector Bucket — stores the embeddings
+        vector_bucket = s3vectors.CfnVectorBucket(
+            self,
+            "ArchitectureVectorBucket",
+            vector_bucket_name="redshift-architecture-kb-vectors",
+        )
+
+        # Vector Index — Titan embed v2 produces 1024-dim FLOAT32 vectors
+        vector_index = s3vectors.CfnIndex(
+            self,
+            "ArchitectureVectorIndex",
+            vector_bucket_name="redshift-architecture-kb-vectors",
+            index_name="redshift-architecture-kb-index",
+            data_type="float32",
+            dimension=1024,
+            distance_metric="cosine",
+        )
+        vector_index.add_dependency(vector_bucket)
+
+        # IAM role for the KB to access S3 docs, S3 Vectors, and Bedrock embedding
+        kb_role = iam.Role(
+            self,
+            "ArchitectureKBRole",
+            assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
+        )
+        kb_bucket.grant_read(kb_role)
+        kb_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[
+                    f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v2:0"
+                ],
+            )
+        )
+        kb_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "s3vectors:PutVectors",
+                    "s3vectors:GetVectors",
+                    "s3vectors:DeleteVectors",
+                    "s3vectors:QueryVectors",
+                    "s3vectors:ListVectors",
+                    "s3vectors:GetIndex",
+                    "s3vectors:ListIndexes",
+                    "s3vectors:GetVectorBucket",
+                ],
+                resources=[
+                    f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/redshift-architecture-kb-vectors",
+                    f"arn:aws:s3vectors:{self.region}:{self.account}:bucket/redshift-architecture-kb-vectors/index/redshift-architecture-kb-index",
+                ],
+            )
+        )
+
+        # Bedrock Knowledge Base with explicit S3_VECTORS storage config
+        kb = cdk.aws_bedrock.CfnKnowledgeBase(
+            self,
+            "ArchitectureKB",
+            name="kb-redshift-sizing-for-project",
+            role_arn=kb_role.role_arn,
+            knowledge_base_configuration=cdk.aws_bedrock.CfnKnowledgeBase.KnowledgeBaseConfigurationProperty(
+                type="VECTOR",
+                vector_knowledge_base_configuration=cdk.aws_bedrock.CfnKnowledgeBase.VectorKnowledgeBaseConfigurationProperty(
+                    embedding_model_arn=f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v2:0",
+                ),
+            ),
+            storage_configuration=cdk.aws_bedrock.CfnKnowledgeBase.StorageConfigurationProperty(
+                type="S3_VECTORS",
+                s3_vectors_configuration=cdk.aws_bedrock.CfnKnowledgeBase.S3VectorsConfigurationProperty(
+                    index_arn=vector_index.attr_index_arn,
+                ),
+            ),
+        )
+        kb.add_dependency(vector_index)
+        # Ensure the KB role's inline policy is fully attached before Bedrock
+        # validates s3vectors permissions on KB creation (race condition fix)
+        kb_role_policy = kb_role.node.find_child("DefaultPolicy").node.default_child
+        kb.add_dependency(kb_role_policy)
+
+        # Data source: S3 bucket prefix
+        data_source = cdk.aws_bedrock.CfnDataSource(
+            self,
+            "ArchitectureKBDataSource",
+            knowledge_base_id=kb.attr_knowledge_base_id,
+            name="architecture-kb-data-source",
+            data_source_configuration=cdk.aws_bedrock.CfnDataSource.DataSourceConfigurationProperty(
+                type="S3",
+                s3_configuration=cdk.aws_bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
+                    bucket_arn=kb_bucket.bucket_arn,
+                    inclusion_prefixes=["redshift-kb-docs/"],
+                ),
+            ),
+            data_deletion_policy="DELETE",
+        )
+
+        # Grant the architecture agent role permission to query the KB
+        architecture_agent_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:Retrieve", "bedrock:RetrieveAndGenerate"],
+                resources=[kb.attr_knowledge_base_arn],
+            )
+        )
+
+        # Trigger ingestion sync after KB + data source + S3 files are ready.
+        # CDK creates the data source definition but does NOT embed/index docs —
+        # StartIngestionJob kicks off the actual embedding pipeline.
+        ingestion_cr = cr.AwsCustomResource(
+            self,
+            "KBIngestionJob",
+            install_latest_aws_sdk=False,
+            on_create=cr.AwsSdkCall(
+                service="bedrock-agent",
+                action="startIngestionJob",
+                parameters={
+                    "knowledgeBaseId": kb.attr_knowledge_base_id,
+                    "dataSourceId": data_source.attr_data_source_id,
+                },
+                physical_resource_id=cr.PhysicalResourceId.of(
+                    "KBIngestionJob"
+                ),
+            ),
+            # Re-sync on every deploy so new doc versions get picked up
+            on_update=cr.AwsSdkCall(
+                service="bedrock-agent",
+                action="startIngestionJob",
+                parameters={
+                    "knowledgeBaseId": kb.attr_knowledge_base_id,
+                    "dataSourceId": data_source.attr_data_source_id,
+                },
+                physical_resource_id=cr.PhysicalResourceId.of(
+                    "KBIngestionJob"
+                ),
+            ),
+            policy=cr.AwsCustomResourcePolicy.from_statements([
+                iam.PolicyStatement(
+                    actions=["bedrock:StartIngestionJob"],
+                    resources=[kb.attr_knowledge_base_arn],
+                )
+            ]),
+        )
+        ingestion_cr.node.add_dependency(data_source)
+
+        return kb.attr_knowledge_base_id, kb.attr_knowledge_base_arn
+
+    # -----------------------------------------------------------------------
     # Task 5.5: Bedrock Agent resources
     # -----------------------------------------------------------------------
     def _create_bedrock_agents(
@@ -394,6 +575,7 @@ class RedshiftModernizationStack(Stack):
         architecture_agent_role: iam.Role,
         execution_agent_role: iam.Role,
         orchestrator_agent_role: iam.Role,
+        architecture_kb_id: str,
     ) -> dict:
         """Create all four Bedrock Agents with action groups and aliases."""
 
@@ -450,6 +632,17 @@ class RedshiftModernizationStack(Stack):
             instruction=ARCHITECTURE_SYSTEM_PROMPT,
             auto_prepare=True,
             memory_configuration=_memory_config,
+            knowledge_bases=[
+                cdk.aws_bedrock.CfnAgent.AgentKnowledgeBaseProperty(
+                    knowledge_base_id=architecture_kb_id,
+                    description=(
+                        "Redshift sizing guide: RPU selection, AI-driven scaling, "
+                        "price-performance targets, provisioned vs serverless cost "
+                        "comparison, and multi-workgroup strategy."
+                    ),
+                    knowledge_base_state="ENABLED",
+                ),
+            ],
             action_groups=[
                 cdk.aws_bedrock.CfnAgent.AgentActionGroupProperty(
                     action_group_name="assessment-tools",

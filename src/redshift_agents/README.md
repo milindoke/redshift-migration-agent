@@ -16,10 +16,21 @@ AI-powered multi-agent system for migrating Amazon Redshift Provisioned clusters
 
 - **Orchestrator** (Supervisor Agent) — coordinates workflow, approval gates, cluster locks, lists clusters directly
 - **Assessment Agent** — cluster config analysis, CloudWatch metrics, WLM queue contention
-- **Architecture Agent** — workgroup design, RPU sizing, migration pattern selection
+- **Architecture Agent** — workgroup design, RPU sizing, migration pattern selection; backed by a Bedrock Knowledge Base (S3 Vectors) with Redshift sizing guidance
 - **Execution Agent** — create resources, snapshot/restore, data sharing, validation
 
 All infrastructure provisioned via AWS CDK. Single `cdk deploy` — no manual setup.
+
+## Knowledge Base
+
+The Architecture Agent uses a Bedrock Knowledge Base (S3 Vectors storage, Titan Embed v2) for Redshift sizing guidance. CDK fully automates this:
+
+1. Uploads docs from `knowledge_base/architecture/` to S3 via `BucketDeployment`
+2. Creates an `AWS::S3Vectors::VectorBucket` and `AWS::S3Vectors::Index`
+3. Creates the `AWS::Bedrock::KnowledgeBase` with `S3_VECTORS` storage
+4. Triggers `StartIngestionJob` via a CDK custom resource — docs are embedded and indexed automatically
+
+To add new KB content: drop files into `knowledge_base/architecture/` and run `cdk deploy`.
 
 ## Region Configuration
 
@@ -100,8 +111,8 @@ pytest tests/ -v
 src/redshift_agents/
 ├── cdk/                         # CDK infrastructure (one-click deploy)
 │   ├── app.py                   # CDK app entry point
-│   ├── stack.py                 # Full stack: Lambda, Bedrock Agents, Cognito, DynamoDB
-│   └── cdk.json                 # CDK config (foundation model selection)
+│   ├── stack.py                 # Full stack: Lambda, Bedrock Agents, KB, Cognito, DynamoDB
+│   └── cdk.json                 # CDK config (foundation model, Finch container runtime)
 ├── lambdas/                     # Lambda action group handlers
 │   ├── assessment_handler.py    # 4 assessment tools
 │   ├── execution_handler.py     # 6 execution tools
@@ -112,8 +123,11 @@ src/redshift_agents/
 │   ├── cluster_lock.py          # DynamoDB cluster locking
 │   └── audit_logger.py          # Structured JSON audit logging
 ├── orchestrator/                # Orchestrator system prompt
-├── subagents/                   # Sub-agent system prompts (with embedded KB)
-├── knowledge_base/              # Reference docs (embedded in agent prompts)
+├── subagents/                   # Sub-agent system prompts
+├── knowledge_base/              # Docs uploaded to S3 and indexed into Bedrock KB
+│   ├── architecture/            # Architecture Agent KB: RPU sizing, migration patterns, data sharing
+│   ├── assessment/              # Reference docs (embedded in assessment agent prompt)
+│   └── execution/               # Reference docs (embedded in execution agent prompt)
 ├── ui/                          # Streamlit chat UI with Cognito auth
 ├── tests/                       # 101 tests (unit + 23 property-based)
 ├── models.py                    # Dataclasses

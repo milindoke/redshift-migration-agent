@@ -4,8 +4,8 @@
 src/redshift_agents/
 ├── cdk/                         # CDK infrastructure (one-click deploy)
 │   ├── app.py                   # CDK app entry point
-│   ├── stack.py                 # Full stack: Lambda, Bedrock Agents, Cognito, DynamoDB
-│   └── cdk.json                 # CDK config (foundation model selection)
+│   ├── stack.py                 # Full stack: Lambda, Bedrock Agents, KB, Cognito, DynamoDB
+│   └── cdk.json                 # CDK config (foundation model, Finch container runtime)
 ├── lambdas/                     # Lambda action group handlers
 │   ├── assessment_handler.py    # listRedshiftClusters, analyzeRedshiftCluster, getClusterMetrics, getWlmConfiguration
 │   ├── execution_handler.py     # createClusterSnapshot, executeRedshiftQuery, createServerlessNamespace, createServerlessWorkgroup, restoreSnapshotToServerless, setupDataSharing
@@ -16,21 +16,25 @@ src/redshift_agents/
 │   ├── cluster_lock.py          # DynamoDB cluster locking
 │   └── audit_logger.py          # Structured JSON audit logging
 ├── orchestrator/                # Orchestrator system prompt constant
-├── subagents/                   # Sub-agent system prompt constants (with embedded KB content)
-├── knowledge_base/              # Reference docs (embedded in agent prompts, kept for documentation)
+├── subagents/                   # Sub-agent system prompt constants
+├── knowledge_base/              # Reference docs uploaded to S3 and indexed into Bedrock KB
+│   ├── architecture/            # Docs for Architecture Agent KB (RPU sizing, migration patterns, data sharing)
+│   ├── assessment/              # Docs for reference (embedded in assessment agent prompt)
+│   └── execution/               # Docs for reference (embedded in execution agent prompt)
 ├── ui/                          # Streamlit chat UI with Cognito auth
 │   ├── app.py                   # Main UI (sign-in, chat, cluster memory)
 │   └── auth.py                  # Cognito auth utilities (JWT, Identity Pool)
 ├── tests/                       # 101 tests (unit + 23 property-based)
 ├── models.py                    # Dataclasses (Assessment/Architecture/Execution results, locks, audit)
-├── deploy-agentcore.sh          # Deploy script (runs cdk deploy)
+├── deploy.sh                    # Deploy script (runs cdk deploy)
 ├── requirements.txt
 └── .env.example
 ```
 
 ## Architecture Patterns
 
-- **Agent pattern**: Each agent is a Bedrock Agent (CfnAgent) with a system prompt constant in its Python module. System prompts include embedded knowledge base content.
+- **Agent pattern**: Each agent is a Bedrock Agent (CfnAgent) with a system prompt constant in its Python module.
+- **Knowledge Base pattern**: The Architecture Agent has a Bedrock Knowledge Base (S3 Vectors storage) attached at deploy time. CDK provisions the S3 Vector Bucket, Vector Index, KB, data source, and triggers `StartIngestionJob` via a custom resource — fully automated, no manual sync needed. Docs live in `knowledge_base/architecture/` and are uploaded to S3 by `BucketDeployment` on every `cdk deploy`.
 - **Tool pattern**: Tools in `tools/redshift_tools.py` are plain Python functions that call AWS APIs via boto3 and return dicts. Errors return `{"error": ...}`, never raise. Lambda handlers dispatch to these functions based on `apiPath`.
 - **Region resolution**: All tools use `_resolve_region()` — checks parameter first, then `AWS_REGION` env var, then falls back to `us-east-2`. No hardcoded regions.
 - **Orchestrator** is a Bedrock Supervisor Agent that delegates to sub-agents via `AssociateAgentCollaborator`. It has `listRedshiftClusters` and cluster lock as direct action groups.
@@ -42,3 +46,4 @@ src/redshift_agents/
 - Every tool emits audit events via `emit_audit_event(initiated_by=user_id)`.
 - Environment config via `.env` files (see `.env.example`).
 - CDK manages all infrastructure — no manual AWS console setup needed.
+- To add new KB docs for the Architecture Agent: drop files into `knowledge_base/architecture/` and run `cdk deploy`. The ingestion job re-runs automatically.

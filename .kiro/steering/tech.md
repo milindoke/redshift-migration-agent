@@ -12,7 +12,7 @@
 ## Key Dependencies
 - `python-json-logger` — Structured JSON logging for audit events
 - `python-dotenv` — Environment config
-- `aws-cdk-lib` — CDK infrastructure
+- `aws-cdk-lib` — CDK infrastructure (includes `aws_s3vectors`, `aws_s3_deployment`, `custom_resources`)
 - `hypothesis` — Property-based testing (test dependency)
 
 ## Region Configuration
@@ -21,9 +21,11 @@
 - Tools use `_resolve_region()` helper: parameter → env var → fallback
 
 ## Deployment
-- Single `cdk deploy` provisions everything: Lambda functions, Bedrock Agents, DynamoDB, Cognito, IAM roles
+- Single `cdk deploy` provisions everything: Lambda functions, Bedrock Agents, Knowledge Base (S3 Vectors), DynamoDB, Cognito, IAM roles
 - CDK stack: `src/redshift_agents/cdk/stack.py`
 - Foundation model configurable via CDK context in `cdk.json`
+- Container runtime: Finch (configured in `cdk.json` via `containerizationOptions`)
+- KB ingestion is triggered automatically post-deploy via a CDK custom resource (`StartIngestionJob`)
 
 ## Common Commands
 
