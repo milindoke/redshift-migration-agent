@@ -1,269 +1,187 @@
 # Redshift Modernization Agents 🚀
 
-AI-powered multi-agent system for comprehensive AWS Redshift modernization using AWS Transform (ATX) framework and Amazon Bedrock AgentCore.
+AI-powered multi-agent system for migrating Amazon Redshift Provisioned clusters to Serverless, built on fully managed Amazon Bedrock Agents.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
-## 🎯 What It Does
+## What It Does
 
-This multi-agent system helps you modernize AWS Redshift Provisioned clusters to Serverless by:
+The system walks you through a 3-phase modernization workflow with human-in-the-loop approval gates:
 
-- ✅ **Automated Assessment**: Analyzes cluster configuration, performance, and usage patterns
-- ✅ **Best Practices Scoring**: Evaluates security, performance, and cost (0-100 score, A-F grade)
-- ✅ **Architecture Design**: Designs multi-warehouse topology with workload separation
-- ✅ **Phased Migration Planning**: Creates 12-18 week implementation plan with validation gates
-- ✅ **Single-Account Deployment**: All agents run within the customer account
-- ✅ **Conversation Isolation**: Namespace-based session management per customer
+1. **Assessment** — Analyzes cluster configuration, CloudWatch metrics, and WLM queue contention (wait times, disk spill, saturation per service class)
+2. **Architecture Design** — Designs Serverless workgroup topology: WLM-to-workgroup mapping, RPU sizing, three patterns (hub-and-spoke, independent, hybrid), cost estimates
+3. **Execution** — Creates namespaces/workgroups, restores snapshots, sets up data sharing, validates performance, plans cutover
 
-## 🏗️ Architecture
+Two migration paths:
+- **Multi-workgroup split** — when WLM contention justifies separating workloads
+- **1:1 migration** — when a single Serverless workgroup suffices
 
-### Multi-Agent System
+## Architecture
 
 ```
-Customer Account (All 5 Agents)
-          ↓
-    Orchestrator coordinates workflow
-    Subagents have direct cluster access
-          ↓
-    Assessment, Scoring,
-    Architecture, Execution
+User (Streamlit UI + Cognito auth)
+        │
+        ▼
+Orchestrator Agent  ──── cluster lock (DynamoDB)
+        │                list clusters (Lambda)
+        ├──▶ Assessment Agent  ──── assessment-tools Lambda
+        │                           (analyzeCluster, getMetrics, getWlmConfig)
+        │
+        ├──▶ Architecture Agent ─── assessment + execution Lambdas
+        │                           + Bedrock Knowledge Base (S3 Vectors)
+        │
+        └──▶ Execution Agent ────── execution-tools Lambda
+                                    (snapshot, restore, serverless, data sharing)
 ```
 
-**5 Agents Total:**
+**4 Bedrock Agents** (supervisor + 3 collaborators), all within your AWS account. No cross-account dependencies, no service accounts.
 
-1. **Orchestrator** (Customer Account)
-   - Coordinates modernization workflow
-   - Maintains conversation state
-   - Delegates to subagents via MCP
+### Key Features
 
-2. **Assessment Agent** (Customer Account)
-   - Analyzes cluster configuration
-   - Extracts IAM roles, VPC, parameters
-   - Evaluates usage patterns
+- **One-click deploy** — single `cdk deploy` provisions everything: Lambda functions, Bedrock Agents, Knowledge Base, DynamoDB, Cognito, IAM roles
+- **Cluster-level memory** — agents remember previous conversations per cluster (30-day SESSION_SUMMARY retention); any user on the same cluster sees shared history
+- **Agent reasoning trace** — the UI surfaces the agent's thinking: rationale, tool calls, sub-agent delegation, and KB lookups in a collapsible expander per response
+- **Forget cluster memory** — one-click button wipes SESSION_SUMMARY across all 4 agents for the active cluster
+- **WLM analysis** — queries service classes 6–13 (manual WLM) and 100–107 (auto WLM) for contention metrics
+- **End-to-end identity** — `user_id` flows from UI → orchestrator → sub-agent → tool → Redshift Data API → CloudTrail
+- **Approval gates** — orchestrator will not advance phases without explicit user confirmation
+- **Cognito auth** — self-registration disabled; admin-created users only; UI shows email not UUID
 
-3. **Scoring Agent** (Customer Account)
-   - Evaluates best practices (0-100 score)
-   - Security: 35%, Performance: 35%, Cost: 30%
-   - Provides A-F grade with recommendations
+## Tech Stack
 
-4. **Architecture Agent** (Customer Account)
-   - Designs multi-warehouse topology
-   - Plans workload separation strategies
-   - Recommends data sharing approach
+| Layer | Technology |
+|-------|-----------|
+| Agents | Amazon Bedrock Agents (CfnAgent, supervisor/collaborator) |
+| Knowledge Base | Bedrock KB with S3 Vectors storage + Titan Embed v2 |
+| Infrastructure | AWS CDK (Python), container runtime: Finch |
+| Lambda runtime | Python 3.12 |
+| UI | Streamlit + Cognito USER_PASSWORD_AUTH |
+| Lock store | DynamoDB (TTL-based cluster locks) |
+| Audit | Structured JSON logging via `python-json-logger` |
 
-5. **Execution Agent** (Customer Account)
-   - Creates phased implementation plan
-   - Defines validation gates
-   - Estimates timeline (12-18 weeks)
-
-### Technology Stack
-
-- **Framework**: AWS Transform (ATX) BaseAgent SDK
-- **AI Platform**: Amazon Bedrock AgentCore
-- **Communication**: ATX MCP (Model Context Protocol)
-- **Deployment**: Docker containers on Bedrock AgentCore
-- **Language**: Python 3.12+
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
-- AWS Account (single customer account)
-- Docker images built and pushed to ECR
-- Bedrock model access enabled (Claude Sonnet 4.5)
-- IAM permissions for Bedrock AgentCore
+- AWS CLI configured
+- Node.js + CDK CLI: `npm install -g aws-cdk`
+- Python 3.12+
+- [Finch](https://github.com/runfinch/finch) (container runtime used by CDK)
+- Bedrock model access enabled for `anthropic.claude-3-5-sonnet-20241022-v2:0` and `amazon.titan-embed-text-v2:0` in your region
 
-### Deployment Status
+### 1. Deploy
 
-✅ Code complete (5 agents)  
-✅ Docker images built with Finch  
-✅ Images pushed to ECR  
-⏳ Next: Deploy to Bedrock AgentCore  
-
-See [ECR_PUSH_SUCCESS.md](src/redshift_agents/ECR_PUSH_SUCCESS.md) for deployment instructions.
-
-### Deploy to Bedrock AgentCore
-
-**Step 1: Build Images** (if not already done)
 ```bash
+cd src/redshift_agents/cdk
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cdk bootstrap aws://ACCOUNT_ID/REGION
+cdk deploy
+```
+
+CDK provisions everything and prints outputs. The KB ingestion job runs automatically — no manual sync needed.
+
+### 2. Configure
+
+```bash
+cp src/redshift_agents/.env.example src/redshift_agents/.env
+# Fill in values from CDK outputs
+```
+
+| Variable | Source |
+|----------|--------|
+| `ORCHESTRATOR_AGENT_ID` | CDK output `OrchestratorAgentId` |
+| `ORCHESTRATOR_AGENT_ALIAS_ID` | CDK output `OrchestratorAliasId` |
+| `ASSESSMENT_AGENT_ID` | CDK output `AssessmentAgentId` |
+| `ARCHITECTURE_AGENT_ID` | CDK output `ArchitectureAgentId` |
+| `EXECUTION_AGENT_ID` | CDK output `ExecutionAgentId` |
+| `COGNITO_USER_POOL_ID` | CDK output `CognitoUserPoolId` |
+| `COGNITO_APP_CLIENT_ID` | CDK output `CognitoAppClientId` |
+| `COGNITO_IDENTITY_POOL_ID` | CDK output `CognitoIdentityPoolId` |
+| `AWS_REGION` | Your deployment region (default: `us-east-2`) |
+
+### 3. Create a Cognito User
+
+Self-registration is disabled. Create users via the CLI:
+
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id <CognitoUserPoolId> \
+  --username your@email.com \
+  --temporary-password TempPass123! \
+  --user-attributes Name=email,Value=your@email.com
+
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id <CognitoUserPoolId> \
+  --username your@email.com \
+  --group-name redshift-admin
+```
+
+### 4. Run the UI
+
+```bash
+pip install -r src/redshift_agents/ui/requirements.txt
 cd src/redshift_agents
-./deploy-with-finch.sh
-# Select option 1: Build images only
+streamlit run ui/app.py
 ```
 
-**Step 2: Push to ECR** (if not already done)
-```bash
-./deploy-with-finch.sh
-# Select option 3: Push existing images to ECR
+Sign in with your email and temporary password. You'll be prompted to set a new password on first login.
+
+## Using the UI
+
+- Type a message like *"Assess cluster `prod-cluster-01` in `us-east-2`"* to start
+- The sidebar shows the active cluster and session info
+- Each agent response includes a **🔍 Agent reasoning** expander — click it to see the model's rationale, tool calls, sub-agent delegation, and KB lookups
+- Use **🗑️ Forget Cluster Memory** to wipe history for the active cluster and restart assessment fresh
+- Use **🔄 New Session** to start a new conversation without clearing memory
+
+## Knowledge Base
+
+The Architecture Agent uses a Bedrock Knowledge Base (S3 Vectors, Titan Embed v2) for Redshift sizing guidance. CDK fully automates this:
+
+1. Uploads docs from `knowledge_base/architecture/` to S3 via `BucketDeployment`
+2. Creates `AWS::S3Vectors::VectorBucket` and `AWS::S3Vectors::Index`
+3. Creates `AWS::Bedrock::KnowledgeBase` with `S3_VECTORS` storage
+4. Triggers `StartIngestionJob` via a CDK custom resource
+
+To add new KB content: drop files into `knowledge_base/architecture/` and run `cdk deploy`.
+
+## Project Structure
+
+```
+src/redshift_agents/
+├── cdk/                    # CDK stack (one-click deploy)
+├── lambdas/                # Lambda action group handlers
+├── schemas/                # OpenAPI 3.0 schemas for action groups
+├── tools/                  # boto3 tool implementations
+├── orchestrator/           # Orchestrator system prompt
+├── subagents/              # Sub-agent system prompts
+├── knowledge_base/         # Docs indexed into Bedrock KB
+├── ui/                     # Streamlit chat UI + Cognito auth
+├── tests/                  # 101 tests (unit + 23 property-based)
+├── models.py               # Dataclasses
+└── .env.example
 ```
 
-**Step 3: Deploy to Bedrock**
+## Running Tests
 
-Follow the detailed instructions in [src/redshift_agents/ECR_PUSH_SUCCESS.md](src/redshift_agents/ECR_PUSH_SUCCESS.md) to:
-1. Create agents in Bedrock Console (~25 min)
-2. Register agents with ATX (~2 min)
-3. Test the system (~2 min)
-
-## 💬 How to Use
-
-### Example Conversation
-
-```
-You: Analyze my Redshift cluster 'prod-cluster-1' in account 188199011335
-
-Orchestrator → Assessment Agent:
-  [Extracts cluster configuration, IAM roles, VPC settings]
-
-You: Score this cluster against best practices
-
-Orchestrator → Scoring Agent:
-  Security: 75/100 (B)
-  Performance: 82/100 (B+)
-  Cost: 68/100 (C+)
-  Overall: 75/100 (B)
-  
-  Recommendations:
-  - Enable encryption at rest
-  - Configure automated snapshots
-  - Optimize WLM queues
-
-You: Design a multi-warehouse architecture
-
-Orchestrator → Architecture Agent:
-  Recommended Topology:
-  - Analytics Workgroup (BI queries)
-  - ETL Workgroup (data processing)
-  - Ad-hoc Workgroup (exploratory)
-  
-  Data Sharing Strategy:
-  - Shared namespace for all workgroups
-  - Workload isolation via separate compute
-
-You: Create an implementation plan
-
-Orchestrator → Execution Agent:
-  Phase 1 (Weeks 1-2): Assessment & Design
-  Phase 2 (Weeks 3-6): Pilot workgroup
-  Phase 3 (Weeks 7-12): Production migration
-  Phase 4 (Weeks 13-16): Optimization
-  Phase 5 (Weeks 17-18): Validation & cutover
-```
-
-## 🔒 Security Features
-
-### Single-Account Architecture
-
-- **All Agents in Customer Account**: Orchestrator and subagents run in the same account
-- **Data Isolation**: Customer data never leaves customer account
-- **No Cross-Account Dependencies**: No service account required
-- **IAM Roles**: Least-privilege permissions within the customer account
-
-### Conversation Isolation
-
-- **Namespace-based Sessions**: `customer_account_id` required
-- **Session IDs**: Format `{namespace}:{conversation_id}`
-- **Memory Isolation**: Each customer has isolated conversation history
-
-## 📊 Best Practices Scoring
-
-### Scoring Criteria
-
-**Security (35%)**
-- Encryption at rest and in transit
-- VPC configuration
-- IAM roles and policies
-- Audit logging enabled
-
-**Performance (35%)**
-- WLM queue configuration
-- Automated snapshots
-- Maintenance windows
-- Query monitoring rules
-
-**Cost (30%)**
-- Right-sized compute
-- Usage limits configured
-- Automated scaling enabled
-- Reserved capacity utilization
-
-### Grade Scale
-
-- **A (90-100)**: Excellent - Production ready
-- **B (80-89)**: Good - Minor improvements needed
-- **C (70-79)**: Fair - Several improvements recommended
-- **D (60-69)**: Poor - Significant changes required
-- **F (<60)**: Failing - Major overhaul needed
-
-## 🛠️ Development
-
-### Local Testing
+No AWS credentials needed — all AWS calls are mocked:
 
 ```bash
-cd src/redshift_agents
-
-# Run unit tests
-pytest tests/ -v
-
-# Test individual agents locally
-python -m orchestrator.orchestrator
-python -m subagents.assessment
+pip install -r src/redshift_agents/tests/requirements-test.txt
+pytest src/redshift_agents/tests/ -v
 ```
 
-### Build Images
+## Teardown
 
 ```bash
-# Build all images
-./build-images.sh
-
-# Or use the comprehensive deployment script
-./deploy-with-finch.sh
+cd src/redshift_agents/cdk && cdk destroy
 ```
 
-## 📚 Documentation
+## Contributing
 
-- **[ECR Push Success](src/redshift_agents/ECR_PUSH_SUCCESS.md)** - Current status & next steps
-- **[Main Documentation](src/redshift_agents/README.md)** - Complete agent documentation
-- **[Deployment Checklist](src/redshift_agents/docs/deployment-checklist.md)** - Step-by-step deployment
-- **[Testing Guide](src/redshift_agents/docs/testing.md)** - Testing strategies
-- **[Contributing](CONTRIBUTING.md)** - How to contribute
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## � Cost Estimate
+## License
 
-**Bedrock AgentCore**:
-- Per-agent pricing: ~$0.10-0.50 per invocation
-- 5 agents × average usage
-- Estimated: $50-200/month (varies by usage)
-
-**ECR Storage**:
-- 5 Docker images × ~500MB each
-- ~$0.10/GB/month
-- Estimated: ~$0.25/month
-
-**Total**: ~$50-200/month depending on usage
-
-## 🔗 Related Projects
-
-- [AWS Transform (ATX)](https://w.amazon.com/bin/view/AWS/Teams/Transform/)
-- [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/)
-- [AWS Redshift Documentation](https://docs.aws.amazon.com/redshift/)
-
-## 🤝 Contributing
-
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
-
-## 📝 License
-
-Apache 2.0 License - see [LICENSE](LICENSE)
-
-## 🆘 Support
-
-- 📖 [Documentation](src/redshift_agents/)
-- 🐛 Report Issues (internal AWS channels)
-- 💬 Discussions (AWS Transform team)
-
----
-
-**Made with ❤️ by the AWS Transform team**
-
-Deploy now and start modernizing! 🚀
+Apache 2.0 — see [LICENSE](LICENSE).
