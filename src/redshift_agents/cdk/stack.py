@@ -57,7 +57,7 @@ _LAMBDA_ASSET_EXCLUDES = [
     "*.pyc",
     ".env",
     ".env.example",
-    "deploy-agentcore.sh",
+    "deploy.sh",
     "requirements.txt",
     "README.md",
     "setup_multi_agent.py",

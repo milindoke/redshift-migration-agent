@@ -174,14 +174,14 @@ def invoke_execution(
 
 
 def acquire_cluster_lock(
-    cluster_id: str, user_id: str, region: str = "us-east-2",
+    cluster_id: str, user_id: str, region: str = "",
 ) -> Dict:
     """Acquire a cluster-level lock before starting workflow."""
     return acquire_lock(cluster_id, user_id, region)
 
 
 def release_cluster_lock(
-    cluster_id: str, user_id: str, region: str = "us-east-2",
+    cluster_id: str, user_id: str, region: str = "",
 ) -> Dict:
     """Release a cluster-level lock on workflow completion or failure."""
     return release_lock(cluster_id, user_id, region)
