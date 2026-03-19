@@ -1,0 +1,66 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RedshiftReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "redshift:Describe*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RedshiftServerlessWrite",
+      "Effect": "Allow",
+      "Action": [
+        "redshift-serverless:Create*",
+        "redshift-serverless:Update*",
+        "redshift-serverless:Get*",
+        "redshift-serverless:List*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RedshiftSnapshotRestore",
+      "Effect": "Allow",
+      "Action": [
+        "redshift:RestoreFromClusterSnapshot"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RedshiftDataAPI",
+      "Effect": "Allow",
+      "Action": [
+        "redshift-data:ExecuteStatement",
+        "redshift-data:DescribeStatement",
+        "redshift-data:GetStatementResult"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatchRead",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:ListMetrics"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EnforceIdentityPropagation",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "aws:PrincipalTag/user": "${aws:PrincipalTag/user}"
+        },
+        "Null": {
+          "aws:PrincipalTag/user": "true"
+        }
+      }
+    }
+  ]
+}

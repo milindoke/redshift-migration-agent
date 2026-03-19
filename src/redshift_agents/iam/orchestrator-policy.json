@@ -1,0 +1,39 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DynamoDBLockTable",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/redshift_modernization_locks"
+    },
+    {
+      "Sid": "InvokeSubagents",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeAgent"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EnforceIdentityPropagation",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "aws:PrincipalTag/user": "${aws:PrincipalTag/user}"
+        },
+        "Null": {
+          "aws:PrincipalTag/user": "true"
+        }
+      }
+    }
+  ]
+}
