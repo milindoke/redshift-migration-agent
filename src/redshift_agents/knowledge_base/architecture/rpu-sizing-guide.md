@@ -52,10 +52,10 @@ When to use base RPU mode:
 | dc2.8xlarge | 5+ | 256-512 | 1024 |
 | ra3.xlplus | 2-8 | 32-64 | 128 |
 | ra3.xlplus | 9+ | 64-128 | 512 |
-| ra3.4xlarge | 2-8 | 128-256 | 512 |
-| ra3.4xlarge | 9+ | 256-512 | 1024 |
-| ra3.16xlarge | 2-4 | 256-512 | 1024 |
-| ra3.16xlarge | 5+ | 512+ | 1024+ |
+| ra3.4xlarge | 2-8 | 64-128 | 512 |
+| ra3.4xlarge | 9+ | 128-512 | 1024 |
+| ra3.16xlarge | 2-4 | 128-256 | 1024 |
+| ra3.16xlarge | 5+ | 256+ | 1024+ |
 
 These are starting points. Actual RPU needs depend on query complexity, concurrency, and data volume.
 
