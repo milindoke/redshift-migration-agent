@@ -84,6 +84,97 @@ Check availability in your target region before deploying:
 
 > **Tip:** Before deploying, verify Bedrock model access for `anthropic.claude-3-5-sonnet-20241022-v2:0` and `amazon.titan-embed-text-v2:0` is enabled in your region. S3 Vectors is a newer service — confirm it is available in your region via the [AWS Regional Services list](https://aws.amazon.com/about-aws/global-infrastructure/regional-product-services/).
 
+## IAM Permissions
+
+CDK creates all roles automatically. This section documents exactly what each role is allowed to do — no surprises.
+
+### Assessment Lambda role
+
+Invoked by the Assessment and Architecture agents to analyze clusters and retrieve WLM metrics.
+
+| Permission | Resource | Why |
+|------------|----------|-----|
+| `redshift:DescribeClusters` | `*` | List and inspect provisioned clusters |
+| `redshift-data:ExecuteStatement` | `*` | Run WLM diagnostic SQL via Data API |
+| `redshift-data:DescribeStatement` | `*` | Poll statement execution status |
+| `redshift-data:GetStatementResult` | `*` | Fetch WLM query results |
+| `redshift:GetClusterCredentialsWithIAM` | `*` | IAM-based auth for Data API calls |
+| `cloudwatch:GetMetricStatistics` | `*` | Retrieve CPU, connections, disk, latency metrics |
+| `logs:CreateLogGroup/Stream`, `logs:PutLogEvents` | Lambda log group | Lambda basic execution (managed policy) |
+
+### Execution Lambda role
+
+Invoked by the Execution and Architecture agents to create Serverless resources and run migration steps.
+
+| Permission | Resource | Why |
+|------------|----------|-----|
+| `AmazonRedshiftFullAccess` (managed policy) | `*` | Create snapshots, namespaces, workgroups, restore, data sharing, Data API |
+| `secretsmanager:*` | `*` | Manage admin password when creating Serverless namespaces (`manageAdminPassword=True`) |
+| `logs:CreateLogGroup/Stream`, `logs:PutLogEvents` | Lambda log group | Lambda basic execution (managed policy) |
+
+> `AmazonRedshiftFullAccess` is broad by design — the execution phase needs to create and configure Serverless resources. If your security posture requires tighter scoping, you can replace it with explicit `redshift:CreateClusterSnapshot`, `redshift-serverless:CreateNamespace/Workgroup`, `redshift-data:*`, and `redshift-serverless:RestoreFromSnapshot` actions.
+
+### Cluster Lock Lambda role
+
+Invoked by the Orchestrator agent to acquire and release cluster-level locks.
+
+| Permission | Resource | Why |
+|------------|----------|-----|
+| `dynamodb:PutItem` | Lock table ARN only | Acquire lock (conditional write) |
+| `dynamodb:DeleteItem` | Lock table ARN only | Release lock |
+| `dynamodb:GetItem` | Lock table ARN only | Read current lock holder on contention |
+| `logs:CreateLogGroup/Stream`, `logs:PutLogEvents` | Lambda log group | Lambda basic execution (managed policy) |
+
+### Bedrock Agent roles (all 4 agents)
+
+Each agent has its own IAM role trusted by `bedrock.amazonaws.com`.
+
+| Permission | Resource | Why |
+|------------|----------|-----|
+| `bedrock:InvokeModel` | `anthropic.claude-*` foundation models | Run LLM inference |
+| `bedrock:InvokeModelWithResponseStream` | `anthropic.claude-*` foundation models | Streaming inference |
+| `lambda:InvokeFunction` | Specific Lambda ARNs only | Invoke action group handlers |
+| `bedrock:InvokeAgent` | `*` | Orchestrator delegates to sub-agents |
+| `bedrock:GetAgent`, `bedrock:GetAgentAlias` | `*` | Orchestrator resolves sub-agent aliases |
+| `bedrock:Retrieve`, `bedrock:RetrieveAndGenerate` | Architecture KB ARN only | Architecture agent queries the KB |
+
+### Knowledge Base role
+
+Trusted by `bedrock.amazonaws.com` for KB ingestion and retrieval.
+
+| Permission | Resource | Why |
+|------------|----------|-----|
+| `s3:GetObject`, `s3:ListBucket` | KB source S3 bucket | Read architecture docs for embedding |
+| `bedrock:InvokeModel` | `amazon.titan-embed-text-v2:0` | Generate embeddings during ingestion |
+| `s3vectors:PutVectors`, `GetVectors`, `DeleteVectors`, `QueryVectors`, `ListVectors` | Vector bucket + index ARNs | Store and query embeddings |
+| `s3vectors:GetIndex`, `ListIndexes`, `GetVectorBucket` | Vector bucket + index ARNs | KB metadata operations |
+
+### Cognito Identity Pool roles (UI users)
+
+Authenticated users get temporary AWS credentials scoped to their group.
+
+**`redshift-admin` group:**
+
+| Permission | Resource | Why |
+|------------|----------|-----|
+| `redshift:*`, `redshift-serverless:*`, `redshift-data:*` | `*` | Full modernization workflow |
+| `cloudwatch:GetMetricStatistics/ListMetrics/GetMetricData` | `*` | View cluster metrics |
+| `dynamodb:PutItem/DeleteItem/GetItem` | Lock table ARN only | Cluster lock operations |
+| `bedrock:InvokeAgent` | `*` | Invoke orchestrator from the UI |
+
+**`redshift-viewer` group (read-only):**
+
+| Permission | Resource | Why |
+|------------|----------|-----|
+| `redshift:Describe*` | `*` | Read cluster configuration |
+| `redshift-data:ExecuteStatement/DescribeStatement/GetStatementResult` | `*` | Run assessment queries |
+| `cloudwatch:GetMetricStatistics/ListMetrics/GetMetricData` | `*` | View cluster metrics |
+| `bedrock:InvokeAgent` | `*` | Invoke orchestrator from the UI |
+
+### CDK bootstrap role (deploy-time only)
+
+The person running `cdk deploy` needs sufficient IAM permissions to create all of the above. At minimum: `iam:CreateRole`, `iam:AttachRolePolicy`, `iam:PutRolePolicy`, `cloudformation:*`, `lambda:*`, `bedrock:*`, `dynamodb:*`, `cognito-idp:*`, `cognito-identity:*`, `s3:*`, `s3vectors:*`. The standard CDK bootstrap (`cdk bootstrap`) sets this up via the `CloudFormationExecutionRole`.
+
 ## Quick Start
 
 ### Prerequisites
