@@ -196,6 +196,54 @@ pip install -r src/redshift_agents/tests/requirements-test.txt
 pytest src/redshift_agents/tests/ -v
 ```
 
+## Cost Estimates
+
+All prices are US East (N. Virginia / Ohio) on-demand rates as of March 2026. See [aws.amazon.com/bedrock/pricing](https://aws.amazon.com/bedrock/pricing/) for current rates.
+
+### Model pricing
+
+| Model | Input | Output |
+|-------|-------|--------|
+| Claude 3.5 Sonnet v2 | $6.00 / 1M tokens | $30.00 / 1M tokens |
+| Titan Embed Text v2 (KB ingestion) | $0.02 / 1M tokens | — |
+
+### Per-migration cost estimate
+
+A typical end-to-end migration (assessment → architecture → execution) involves roughly 4–6 agent turns, each triggering 2–4 sub-agent calls. Assuming ~50K input tokens and ~15K output tokens across all 4 agents per migration:
+
+| Item | Estimate |
+|------|----------|
+| Claude 3.5 Sonnet v2 — input (50K tokens) | ~$0.30 |
+| Claude 3.5 Sonnet v2 — output (15K tokens) | ~$0.45 |
+| Titan Embed v2 — KB ingestion (one-time, ~20K tokens) | < $0.01 |
+| Lambda invocations (assessment + execution tools) | < $0.01 |
+| DynamoDB (cluster lock reads/writes) | < $0.01 |
+| **Total per migration** | **~$0.75 – $1.50** |
+
+Token usage scales with cluster complexity — a cluster with many WLM queues and a multi-workgroup architecture will use more tokens than a simple 1:1 migration.
+
+### Ongoing infrastructure cost (idle)
+
+These resources persist after deployment and incur charges even when not actively migrating:
+
+| Resource | Monthly cost |
+|----------|-------------|
+| S3 Vectors storage (~4 KB docs × 1024-dim embeddings, < 1 MB) | < $0.01 |
+| S3 bucket (KB source docs, < 1 MB) | < $0.01 |
+| DynamoDB (PAY_PER_REQUEST, no idle charge) | $0.00 |
+| Lambda (no idle charge) | $0.00 |
+| Bedrock Agents (no idle charge) | $0.00 |
+| Cognito User Pool (up to 50K MAUs free tier) | $0.00 |
+| **Total idle infrastructure** | **~$0.00 – $0.05 / month** |
+
+### Cost optimisation tips
+
+- The foundation model is configurable via CDK context (`foundation_model` in `cdk.json`). Switching to a smaller model (e.g. Claude 3 Haiku at $0.25/$1.25 per 1M tokens) can reduce per-migration cost by ~80% if reasoning quality is sufficient for your clusters.
+- KB ingestion only runs on `cdk deploy` — it does not incur recurring embedding costs.
+- S3 Vectors query costs scale with index size and query volume; for this KB (< 10K vectors) they are negligible.
+
+> These are estimates only. Actual costs depend on cluster complexity, conversation length, and number of migrations. Always verify current pricing at [aws.amazon.com/bedrock/pricing](https://aws.amazon.com/bedrock/pricing/).
+
 ## Teardown
 
 ```bash
