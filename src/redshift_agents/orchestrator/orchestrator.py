@@ -213,11 +213,8 @@ Do NOT proceed with any workflow step without a valid `user_id`.
 3. Acquire a cluster lock using `acquire_cluster_lock(cluster_id, user_id, region)`.
    - If the lock is denied, inform the user who holds the lock and when it was acquired.
    - Do NOT proceed if the lock cannot be acquired.
-4. Delegate detailed assessment to the Assessment Agent (cluster analysis, CloudWatch metrics, WLM queue analysis).
+4. Invoke `invoke_assessment(cluster_id, region, customer_account_id, user_id)`.
 5. Present the assessment results (WLM queue analysis, contention findings) to the user.
-   - Do NOT proceed if the lock cannot be acquired.
-3. Invoke `invoke_assessment(cluster_id, region, customer_account_id, user_id)`.
-4. Present the assessment results (WLM queue analysis, contention findings) to the user.
 
 ### Gate 1: Assessment to Architecture Approval
 - After presenting assessment results, you MUST ask the user for explicit approval.

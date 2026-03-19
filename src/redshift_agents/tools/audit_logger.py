@@ -89,6 +89,9 @@ def _resolve_account_id(provided: str) -> str:
 
         return boto3.client("sts").get_caller_identity()["Account"]
     except Exception:
+        logging.getLogger(__name__).warning(
+            "Could not resolve AWS account ID — set AWS_ACCOUNT_ID env var for accurate audit logs"
+        )
         return "unknown"
 
 

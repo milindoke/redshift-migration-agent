@@ -187,6 +187,7 @@ class TestExecutionHandlerDispatch:
     @patch("boto3.client")
     def test_sts_assume_role_with_session_tags(self, mock_boto3, mock_audit, mock_sleep):
         """Verify STS AssumeRole includes user session tags (Requirement 15.6)."""
+        import redshift_agents.lambdas.execution_handler as _eh
         mock_client = Mock()
         mock_client.execute_statement.return_value = {"Id": "stmt-1"}
         mock_client.describe_statement.return_value = {"Status": "FINISHED"}
@@ -201,7 +202,7 @@ class TestExecutionHandlerDispatch:
             "/executeRedshiftQuery",
             {"cluster_id": "c1", "query": "SELECT 1", "region": "us-east-2", "user_id": "alice"},
         )
-        execution_handler(event)
+        _eh.handler(event)
 
         # Verify STS AssumeRole was called with session tags
         mock_client.assume_role.assert_called_once()

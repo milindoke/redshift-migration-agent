@@ -11,9 +11,10 @@ from __future__ import annotations
 import os
 import time
 
-import boto3
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+
+import boto3
 
 try:
     from tools.audit_logger import emit_audit_event
@@ -350,6 +351,7 @@ ORDER BY cfg.service_class
         exec_resp = redshift_data.execute_statement(
             ClusterIdentifier=cluster_id,
             Database='dev',
+            DbUser=user_id or None,
             Sql=sql,
         )
         statement_id = exec_resp['Id']
@@ -631,6 +633,7 @@ def execute_redshift_query(
         exec_resp = redshift_data.execute_statement(
             ClusterIdentifier=cluster_id,
             Database='dev',
+            DbUser=user_id or None,
             Sql=query,
         )
         statement_id = exec_resp['Id']

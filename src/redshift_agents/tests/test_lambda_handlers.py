@@ -419,7 +419,7 @@ def test_property3_identity_propagation_assessment(user_id, region, cluster_id):
     event = _build_event("/getWlmConfiguration", params)
 
     with patch("boto3.client", side_effect=factory), \
-         patch("redshift_agents.tools.redshift_tools.emit_audit_event") as mock_audit:
+         patch("tools.redshift_tools.emit_audit_event") as mock_audit:
         from redshift_agents.lambdas.assessment_handler import handler
         handler(event)
 
@@ -446,7 +446,7 @@ def test_property3_identity_propagation_execution(user_id, region, cluster_id):
     event = _build_event("/executeRedshiftQuery", params)
 
     with patch("boto3.client", side_effect=factory), \
-         patch("redshift_agents.tools.redshift_tools.emit_audit_event") as mock_audit:
+         patch("tools.redshift_tools.emit_audit_event") as mock_audit:
         from redshift_agents.lambdas.execution_handler import handler
         handler(event)
 
@@ -482,7 +482,7 @@ def test_property4_audit_emitted_assessment(api_path, user_id, region, cluster_i
     event = _build_event(api_path, params)
 
     with patch("boto3.client", side_effect=factory), \
-         patch("redshift_agents.tools.redshift_tools.emit_audit_event") as mock_audit:
+         patch("tools.redshift_tools.emit_audit_event") as mock_audit:
         from redshift_agents.lambdas.assessment_handler import handler
         handler(event)
 
@@ -508,7 +508,7 @@ def test_property4_audit_emitted_execution(api_path, user_id, region, cluster_id
     event = _build_event(api_path, params)
 
     with patch("boto3.client", side_effect=factory), \
-         patch("redshift_agents.tools.redshift_tools.emit_audit_event") as mock_audit:
+         patch("tools.redshift_tools.emit_audit_event") as mock_audit:
         from redshift_agents.lambdas.execution_handler import handler
         handler(event)
 
@@ -728,13 +728,14 @@ def _make_jwt_from_payload(payload: dict) -> str:
     }),
 )
 def test_property7_jwt_extraction_cognito_username(username, email, extra_claims):
-    """Property 7a: When the JWT payload contains ``cognito:username``,
-    extract_user_id_from_payload returns that value regardless of whether
-    ``email`` is also present."""
+    """Property 7a: When the JWT payload contains both ``email`` and
+    ``cognito:username``, extract_user_id_from_payload prefers ``email``
+    (human-readable display over UUID-style Cognito username)."""
     from redshift_agents.ui.auth import extract_user_id_from_payload
 
     payload = {**extra_claims, "cognito:username": username, "email": email}
-    assert extract_user_id_from_payload(payload) == username
+    # email takes priority over cognito:username per the documented preference order
+    assert extract_user_id_from_payload(payload) == email
 
 
 @settings(max_examples=100, deadline=None)

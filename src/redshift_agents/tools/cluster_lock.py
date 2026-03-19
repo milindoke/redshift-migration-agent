@@ -24,6 +24,11 @@ LOCK_TABLE = os.getenv("DYNAMODB_LOCK_TABLE", "redshift_modernization_locks")
 TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
 
+def _resolve_region(region: str) -> str:
+    """Resolve region from parameter, env var, or default."""
+    return region or os.getenv("AWS_REGION", "us-east-2")
+
+
 def acquire_lock(
     cluster_id: str,
     user_id: str,
@@ -52,7 +57,7 @@ def acquire_lock(
 
             {"error": ..., "cluster_id": ..., "region": ...}
     """
-    region = region or os.getenv("AWS_REGION", "us-east-2")
+    region = _resolve_region(region)
     now = datetime.now(timezone.utc)
     acquired_at = now.isoformat()
     ttl_epoch = int(time.time()) + TTL_SECONDS
@@ -136,7 +141,7 @@ def release_lock(
 
             {"released": False, "error": ..., "cluster_id": ...}
     """
-    region = region or os.getenv("AWS_REGION", "us-east-2")
+    region = _resolve_region(region)
     dynamodb = boto3.client("dynamodb", region_name=region)
 
     try:
