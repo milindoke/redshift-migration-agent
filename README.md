@@ -60,6 +60,30 @@ Orchestrator Agent  ──── cluster lock (DynamoDB)
 | Lock store | DynamoDB (TTL-based cluster locks) |
 | Audit | Structured JSON logging via `python-json-logger` |
 
+## AWS Services Required
+
+Check availability in your target region before deploying:
+
+| Service | Usage |
+|---------|-------|
+| **Amazon Bedrock** | Agents (supervisor + 3 collaborators), Knowledge Base, foundation model inference |
+| **Amazon Bedrock — Claude 3.5 Sonnet v2** | `anthropic.claude-3-5-sonnet-20241022-v2:0` — all 4 agents |
+| **Amazon Bedrock — Titan Embed v2** | `amazon.titan-embed-text-v2:0` — KB document embedding |
+| **Amazon S3 Vectors** | Vector bucket + index for Knowledge Base storage (`AWS::S3Vectors::VectorBucket`) |
+| **Amazon S3** | KB source document storage |
+| **AWS Lambda** | Action group handlers (assessment, execution, cluster-lock) |
+| **Amazon DynamoDB** | Cluster-level locking table |
+| **Amazon Cognito** | User Pool (auth) + Identity Pool (temporary AWS credentials for UI) |
+| **Amazon Redshift** | Source provisioned clusters being assessed and migrated |
+| **Amazon Redshift Serverless** | Target namespaces and workgroups created during execution |
+| **Amazon Redshift Data API** | SQL execution for WLM analysis and query tools |
+| **Amazon CloudWatch** | Cluster performance metrics (CPU, connections, disk, latency) |
+| **AWS CloudFormation** | CDK stack deployment |
+| **AWS IAM** | Roles for Lambda, Bedrock Agents, Cognito Identity Pool |
+| **AWS Secrets Manager** | Admin password management for Serverless namespaces |
+
+> **Tip:** Before deploying, verify Bedrock model access for `anthropic.claude-3-5-sonnet-20241022-v2:0` and `amazon.titan-embed-text-v2:0` is enabled in your region. S3 Vectors is a newer service — confirm it is available in your region via the [AWS Regional Services list](https://aws.amazon.com/about-aws/global-infrastructure/regional-product-services/).
+
 ## Quick Start
 
 ### Prerequisites
