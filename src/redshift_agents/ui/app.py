@@ -225,10 +225,14 @@ def forget_cluster_memory(cluster_id: str) -> str:
 def _extract_trace_steps(trace_event: dict) -> list[dict]:
     """Pull reasoning steps out of a Bedrock Agent trace event.
 
-    Returns a list of dicts with keys: type, text, (optional) tool, input, output.
+    The Bedrock stream event structure is:
+      event = {"trace": {"trace": {"orchestrationTrace": {...}}}}
     """
     steps = []
-    trace = trace_event.get("trace", {})
+
+    # The outer key is "trace", inner key is also "trace"
+    outer = trace_event.get("trace", {})
+    trace = outer.get("trace", outer)  # handle both nested and flat
 
     # Orchestration trace — reasoning + tool calls
     orch = trace.get("orchestrationTrace", {})
@@ -282,7 +286,7 @@ def _extract_trace_steps(trace_event: dict) -> list[dict]:
         if snippets:
             steps.append({
                 "type": "kb_result",
-                "output": "\n\n---\n\n".join(snippets[:3]),  # cap at 3 snippets
+                "output": "\n\n---\n\n".join(snippets[:3]),
             })
 
     return steps
@@ -516,23 +520,26 @@ for msg in st.session_state.messages:
 
 # Chat input
 if prompt := st.chat_input("Describe your modernization request..."):
-    # user_id is always from Cognito JWT — cannot be overridden
     user_id = st.session_state.user_id
 
-    # Extract cluster_id from the message if mentioned
-    # Looks for patterns like "cluster my-cluster-01" or known cluster names
+    # Extract cluster_id from the user message
     import re
-    cluster_match = re.search(r'cluster[- _]?(?:id)?[:\s]+([a-zA-Z0-9][a-zA-Z0-9._-]+)', prompt, re.IGNORECASE)
-    if not cluster_match:
-        # Also match "modernize <cluster-name>" or "<cluster-name> in <region>"
-        cluster_match = re.search(r'(?:modernize|migrate|assess|analyze)\s+([a-zA-Z][a-zA-Z0-9._-]+)', prompt, re.IGNORECASE)
-    if cluster_match:
-        new_cluster = cluster_match.group(1)
-        if new_cluster != st.session_state.active_cluster_id:
-            # Cluster switched — start fresh session so context doesn't bleed
-            st.session_state.active_cluster_id = new_cluster
-            st.session_state.session_id = str(uuid.uuid4())
-            st.session_state.messages = []
+    def _find_cluster(text: str) -> str | None:
+        # "cluster <name>", "cluster-id: <name>", "cluster: <name>"
+        m = re.search(r'cluster[- _]?(?:id)?[:\s]+([a-zA-Z0-9][a-zA-Z0-9._-]+)', text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        # "modernize/migrate/assess/analyze <name>"
+        m = re.search(r'(?:modernize|migrate|assess|analyze)\s+([a-zA-Z][a-zA-Z0-9._-]+)', text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        return None
+
+    detected = _find_cluster(prompt)
+    if detected and detected != st.session_state.active_cluster_id:
+        st.session_state.active_cluster_id = detected
+        st.session_state.session_id = str(uuid.uuid4())
+        st.session_state.messages = []
 
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -543,11 +550,21 @@ if prompt := st.chat_input("Describe your modernization request..."):
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             response, trace_steps = invoke_orchestrator(prompt, user_id)
+
+        # Also try to detect cluster from agent response if not already set
+        if not st.session_state.active_cluster_id:
+            detected_in_response = _find_cluster(response)
+            if detected_in_response:
+                st.session_state.active_cluster_id = detected_in_response
+
         _render_trace(trace_steps)
         st.markdown(response)
 
-    # Add assistant message (store trace for history replay)
+    # Store trace for history replay
     st.session_state.messages.append({"role": "assistant", "content": response, "trace": trace_steps})
+
+    # Rerun so sidebar reflects updated cluster_id immediately
+    st.rerun()
 
 
 # ---------------------------------------------------------------------------
